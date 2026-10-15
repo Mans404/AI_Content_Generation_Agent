@@ -11,3 +11,4 @@ main.ipynb
 .venv
 contentGeneration.egg-info
 .mypy_cache
+uploads

@@ -1,0 +1,9 @@
+Company Name: {company_name}
+Industry: {industry}
+
+Analyze this company and generate suitable social media post ideas.
+
+Return:
+- multiple post ideas
+- a post type for each idea
+- the overall company theme

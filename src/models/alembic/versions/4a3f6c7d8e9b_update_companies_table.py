@@ -26,9 +26,14 @@ tone_enum = sa.Enum(
 )
 
 
+
 def upgrade() -> None:
     """Apply the company profile schema."""
     bind = op.get_bind()
+
+    # Rename the existing table first.
+    op.rename_table("company_model", "companies")
+
     language_enum.create(bind, checkfirst=True)
     tone_enum.create(bind, checkfirst=True)
 
@@ -39,6 +44,7 @@ def upgrade() -> None:
         "reference_design_path",
         new_column_name="logo_path",
     )
+
     op.execute(
         sa.text(
             "UPDATE companies SET logo_path = '' "
@@ -89,7 +95,7 @@ def upgrade() -> None:
             "audiences",
             sa.JSON(),
             nullable=False,
-            server_default="[]",
+            server_default=sa.text("'[]'"),
         ),
     )
     op.add_column(
@@ -114,6 +120,7 @@ def upgrade() -> None:
     op.alter_column("companies", "tone", server_default=None)
     op.alter_column("companies", "audiences", server_default=None)
     op.alter_column("companies", "posts_per_week", server_default=None)
+
 
 
 def downgrade() -> None:
@@ -141,3 +148,4 @@ def downgrade() -> None:
     op.drop_column("companies", "language")
     tone_enum.drop(op.get_bind(), checkfirst=True)
     language_enum.drop(op.get_bind(), checkfirst=True)
+    op.rename_table("companies", "company_model")

@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 
-from src.routes.company_data import company_data_router
+from src.routes.companies import companies_router
 
 
 app = FastAPI()
-app.include_router(company_data_router)
-
+app.include_router(companies_router)

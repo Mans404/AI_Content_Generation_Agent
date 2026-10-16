@@ -3,6 +3,7 @@ from enum import Enum
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, JSON, String, Uuid, func
+from sqlalchemy import DateTime, JSON, String, Uuid, func, Enum as SQLAlchemyEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -48,8 +49,15 @@ class CompanyModel(Base):
         default="#FFFFFF",
     )
     tone: Mapped[CompanyTone] = mapped_column(
-        default=CompanyTone.PROFESSIONAL,
-        nullable=False,
+    SQLAlchemyEnum(
+        CompanyTone,
+        name="companytone",
+        values_callable=lambda enum_cls: [
+            member.value for member in enum_cls
+        ],
+    ),
+    default=CompanyTone.PROFESSIONAL,
+    nullable=False,
     )
     audiences: Mapped[list[str]] = mapped_column(
         JSON,

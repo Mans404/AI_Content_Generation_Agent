@@ -4,20 +4,26 @@ from uuid import uuid4
 from fastapi import HTTPException, UploadFile, status
 
 from src.agents.company_agent import company_agent
-from src.database.company_database import async_session_factory
-from src.models.companies import CompanyModel
+from src.database.companies import async_session_factory
+from src.models.companies import CompanyLanguage, CompanyModel, CompanyTone
 from src.schemas.company_agent import CompanyContext
-from src.schemas.company_data import CompanyDataResponse
+from src.schemas.companies import CompanyDataResponse
 
 
 UPLOAD_DIR = Path("uploads/company_designs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-async def create_company_data(
+async def create_companies(
     company_name: str,
     industry: str,
     reference_design: UploadFile,
+    language: CompanyLanguage,
+    primary_color: str,
+    secondary_color: str,
+    tone: CompanyTone,
+    audiences: list[str],
+    posts_per_week: int,
 ) -> CompanyDataResponse:
 
     # 1. Validate filename
@@ -67,18 +73,24 @@ async def create_company_data(
         reference_design_path=str(file_path),
     )
 
-    agent_response = await company_agent.start(company_context)
+    # agent_response = await company_agent.start(company_context) WAIT  %%%%%%%
     
     # New 9. Store the company data in the database
 
-    companies = CompanyModel(
+    company = CompanyModel(
         id=company_context.company_id,
         name=company_context.company_name,
+        language=language,
         logo_path=company_context.reference_design_path,
+        primary_color=primary_color,
+        secondary_color=secondary_color,
+        tone=tone,
+        audiences=audiences,
+        posts_per_week=posts_per_week,
     )
 
     async with async_session_factory() as session:
-        session.add(companies)
+        session.add(company)
         await session.commit()
 
     # end of new 9. Store the company data in the database
@@ -88,4 +100,10 @@ async def create_company_data(
         industry=industry,
         reference_design_filename=stored_filename,
         reference_design_size=len(image_data),
+        language=language,
+        primary_color=primary_color,
+        secondary_color=secondary_color,
+        tone=tone,
+        audiences=audiences,
+        posts_per_week=posts_per_week,
     )

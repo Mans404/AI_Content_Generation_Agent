@@ -1,13 +1,13 @@
 from pydantic import BaseModel
 
-from src.models.companies import CompanyLanguage, CompanyIndustry
+from src.models.companies import DoctorLanguage, DoctorSpecialization
 
 
-class CompanyDataResponse(BaseModel):
-    company_name: str
-    industry: str
+class DoctorDataResponse(BaseModel):
+    doctor_name: str
+    doctor_specialization: str
     yourPicture_filename: str
     yourPicture_size: int
-    language: CompanyLanguage
+    language: DoctorLanguage
     audiences: list[str]
     posts_per_week: int

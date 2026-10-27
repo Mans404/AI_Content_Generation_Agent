@@ -1,8 +1,8 @@
 from fastapi import APIRouter, File, Form, UploadFile, status
 
 from src.controllers.companies import create_companies
-from src.models.companies import CompanyLanguage, CompanyIndustry
-from src.schemas.companies import CompanyDataResponse
+from src.models.companies import DoctorLanguage, DoctorSpecialization
+from src.schemas.companies import DoctorDataResponse
 
 
 companies_router = APIRouter(
@@ -13,21 +13,21 @@ companies_router = APIRouter(
 
 @companies_router.post(
     "/",
-    response_model=CompanyDataResponse,
+    response_model=DoctorDataResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_companies_route(
-    company_name: str = Form(..., min_length=1),
-    industry: CompanyIndustry = Form(CompanyIndustry.OTHER), # Previously tone
+    doctor_name: str = Form(..., min_length=1),
+    doctor_specialization: DoctorSpecialization = Form(DoctorSpecialization.OTHER), # Previously tone
     yourPicture: UploadFile = File(...),
-    language: CompanyLanguage = Form(CompanyLanguage.EN),
+    language: DoctorLanguage = Form(DoctorLanguage.EN),
     audiences: list[str] = Form([]),
     posts_per_week: int = Form(3, ge=1),
-) -> CompanyDataResponse:
+) -> DoctorDataResponse:
 
     return await create_companies(
-        company_name=company_name, # Doctor Name
-        industry=industry,
+        doctor_name=doctor_name,
+        doctor_specialization=doctor_specialization,
         yourPicture=yourPicture,
         language=language,
         audiences=audiences,

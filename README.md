@@ -4,9 +4,8 @@ An early-stage FastAPI service for creating Doctor content profiles and preparin
 them for AI-generated social media strategies.
 
 The project currently accepts a Doctor's basic information and visual reference
-design, stores the profile in PostgreSQL, and contains a LangChain agent that is
-ready to generate structured content ideas. The agent integration is present but
-is not yet enabled in the Doctor-creation request flow.
+design, stores the profile in PostgreSQL, retrieves the committed profile, and
+passes it to a LangChain agent that generates structured content ideas.
 
 ## Current status
 
@@ -26,10 +25,8 @@ is not yet enabled in the Doctor-creation request flow.
 
 ### Not yet connected
 
-- The Doctor agent is not called by the controller yet; the invocation is
-  currently commented out.
-- Generated ideas, post types, and the Doctor theme are not returned by the API
-  or persisted in the current Doctor-profile schema.
+- Generated ideas, post types, and the Doctor theme are returned by the creation
+  endpoint but are not persisted in the current Doctor-profile schema.
 - There are no automated tests or CI workflows in the repository yet.
 - There is no authentication, authorization, file-size limit, or image
   processing pipeline.
@@ -64,13 +61,15 @@ FastAPI route: POST /api/v1/companies/
   v
 Doctor controller
   |-- validates and saves JPG -> uploads/Doctor_designs/
-  |-- creates DoctorContext for the AI agent
   |-- persists DoctorModel -> PostgreSQL
+  |-- retrieves DoctorModel from PostgreSQL
+  |-- creates DoctorContext from the retrieved row
+  |-- invokes DoctorAgent -> structured AgentOutput
   |
   v
-DoctorDataResponse
+DoctorDataResponse + AgentOutput
 
-AI layer (currently available but not invoked by the controller)
+AI layer
   PromptLoader -> prompts/system.txt + prompts/user.txt
   DoctorAgent -> OpenRouter -> structured AgentOutput
 ```

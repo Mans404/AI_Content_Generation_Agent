@@ -1,5 +1,13 @@
 Doctor Name: {doctor_name}
 doctor_specialization: {doctor_specialization}
+Language: {language}
+Audiences: {audiences}
+Types of Medical Procedures: {types_of_medical_procedures}
+Doctor Offers: {doctor_offers}
+Advice and Matters That Most People Find Confusing: {advice_and_matters_that_most_people_find_confusing}
+Strengths: {strengths}
+Posts Per Week: {posts_per_week}
+
 
 Analyze this doctor and generate suitable social media post ideas.
 

@@ -3,25 +3,25 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 
-from src.agents.company_agent import company_agent
+from src.agents.doctor_agent import doctor_agent
 from src.database.companies import async_session_factory
-from src.models.companies import CompanyLanguage, CompanyModel, CompanyIndustry
-from src.schemas.company_agent import CompanyContext
-from src.schemas.companies import CompanyDataResponse
+from src.models.companies import DoctorLanguage, DoctorModel, DoctorSpecialization
+from src.schemas.doctor_agent import DoctorContext
+from src.schemas.companies import DoctorDataResponse
 
 
-UPLOAD_DIR = Path("uploads/company_designs")
+UPLOAD_DIR = Path("uploads/Doctor_designs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 async def create_companies(
-    company_name: str,
-    industry: str,
+    doctor_name: str,
+    doctor_specialization: str,
     yourPicture: UploadFile,
-    language: CompanyLanguage,
+    language: DoctorLanguage,
     audiences: list[str],
     posts_per_week: int,
-) -> CompanyDataResponse:
+) -> DoctorDataResponse:
 
     # 1. Validate filename
     if not yourPicture.filename:
@@ -63,36 +63,36 @@ async def create_companies(
     file_path.write_bytes(image_data)
 
     # 8. Build context for the AI Agent
-    company_context = CompanyContext(
-        company_id=uuid4(),
-        company_name=company_name,
-        industry=industry,
-        yourPicture_path=str(file_path),
+    Doctor_context = DoctorContext(
+        doctor_id=uuid4(),
+        doctor_name=doctor_name,
+        doctor_specialization=doctor_specialization,
+        picture_path=str(file_path),
     )
 
-    # agent_response = await company_agent.start(company_context) WAIT  %%%%%%%
+    # agent_response = await doctor_agent.start(Doctor_context) WAIT  %%%%%%%
     
-    # New 9. Store the company data in the database
+    # New 9. Store the Doctor data in the database
 
-    company = CompanyModel(
-        id=company_context.company_id,
-        industry=industry,
-        name=company_context.company_name,
+    Doctor = DoctorModel(
+        id=Doctor_context.doctor_id,
+        doctor_specialization=doctor_specialization,
+        name=Doctor_context.doctor_name,
         language=language,
-        logo_path=company_context.yourPicture_path,
+        picture_path=Doctor_context.picture_path,
         audiences=audiences,
         posts_per_week=posts_per_week,
     )
 
     async with async_session_factory() as session:
-        session.add(company)
+        session.add(Doctor)
         await session.commit()
 
-    # end of new 9. Store the company data in the database
+    # end of new 9. Store the Doctor data in the database
 
-    return CompanyDataResponse(
-        company_name=company_name,
-        industry=industry,
+    return DoctorDataResponse(
+        doctor_name=doctor_name,
+        doctor_specialization=doctor_specialization,
         yourPicture_filename=stored_filename,
         yourPicture_size=len(image_data),
         language=language,

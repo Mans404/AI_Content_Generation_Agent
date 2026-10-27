@@ -11,31 +11,30 @@ class Base(DeclarativeBase):
     """Base class for SQLAlchemy models."""
 
 
-class CompanyLanguage(str, Enum):
+class DoctorLanguage(str, Enum):
     AR = "AR"
     EN = "EN"
 
 
-class CompanyIndustry(str, Enum):
-    TECHNOLOGY = "technology"
-    HEALTHCARE = "healthcare"
-    EDUCATION = "education"
-    FINANCE = "finance"
-    REAL_ESTATE = "real_estate"
-    RETAIL = "retail"
-    FOOD_AND_BEVERAGE = "food_and_beverage"
-    MANUFACTURING = "manufacturing"
-    CONSTRUCTION = "construction"
-    MARKETING = "marketing"
-    TRAVEL_AND_TOURISM = "travel_and_tourism"
-    AUTOMOTIVE = "automotive"
-    TELECOMMUNICATIONS = "telecommunications"
-    LOGISTICS = "logistics"
-    AGRICULTURE = "agriculture"
+class DoctorSpecialization(str, Enum):
+    INTERNAL_MEDICINE = "internal_medicine"
+    DENTISTRY = "dentistry"
+    DERMATOLOGY = "dermatology"
+    CARDIOLOGY = "cardiology"
+    NEUROLOGY = "neurology"
+    PEDIATRICS = "pediatrics"
+    ORTHOPEDICS = "orthopedics"
+    OPHTHALMOLOGY = "ophthalmology"
+    OBSTETRICS_AND_GYNECOLOGY = "obstetrics_and_gynecology"
+    UROLOGY = "urology"
+    GENERAL_SURGERY = "general_surgery"
+    PSYCHIATRY = "psychiatry"
+    ENT = "ent"
+    PHYSIOTHERAPY = "physiotherapy"
     OTHER = "other"
 
 
-class CompanyModel(Base):
+class DoctorModel(Base):
     __tablename__ = "companies"
 
     id: Mapped[UUID] = mapped_column(
@@ -44,20 +43,20 @@ class CompanyModel(Base):
         default=uuid4,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    language: Mapped[CompanyLanguage] = mapped_column(
-        default=CompanyLanguage.EN,
+    language: Mapped[DoctorLanguage] = mapped_column(
+        default=DoctorLanguage.EN,
         nullable=False,
     )
     picture_path: Mapped[str] = mapped_column(String(1024), nullable=False)
-    industry: Mapped[CompanyIndustry] = mapped_column(
+    doctor_specialization: Mapped[DoctorSpecialization] = mapped_column(
     SQLAlchemyEnum(
-        CompanyIndustry,
-        name="companyindustry",
+        DoctorSpecialization,
+        name="DoctorSpecialization",
         values_callable=lambda enum_cls: [
             member.value for member in enum_cls
         ],
     ),
-    default=CompanyIndustry.OTHER,
+    default=DoctorSpecialization.OTHER,
     nullable=False,
     )
     audiences: Mapped[list[str]] = mapped_column(

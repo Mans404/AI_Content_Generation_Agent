@@ -1,9 +1,9 @@
-Company Name: {company_name}
-Industry: {industry}
+Doctor Name: {doctor_name}
+doctor_specialization: {doctor_specialization}
 
-Analyze this company and generate suitable social media post ideas.
+Analyze this doctor and generate suitable social media post ideas.
 
 Return:
 - multiple post ideas
 - a post type for each idea
-- the overall company theme
+- the overall doctor theme

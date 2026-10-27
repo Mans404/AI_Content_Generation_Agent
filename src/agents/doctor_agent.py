@@ -36,6 +36,15 @@ class DoctorAgent:
         user_prompt = prompts.user(
             doctor_name=Doctor.doctor_name,
             doctor_specialization=Doctor.doctor_specialization,
+            language=Doctor.language,
+            audiences=Doctor.audiences,
+            types_of_medical_procedures=Doctor.types_of_medical_procedures,
+            doctor_offers=Doctor.doctor_offers,
+            advice_and_matters_that_most_people_find_confusing=(
+                Doctor.advice_and_matters_that_most_people_find_confusing
+            ),
+            strengths=Doctor.strengths,
+            posts_per_week=Doctor.posts_per_week,
         )
 
         config: RunnableConfig = {

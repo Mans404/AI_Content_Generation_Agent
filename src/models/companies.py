@@ -64,6 +64,26 @@ class DoctorModel(Base):
         nullable=False,
         default=list,
     )
+    types_of_medical_procedures: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    doctor_offers: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    advice_and_matters_that_most_people_find_confusing: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    strengths: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
     posts_per_week: Mapped[int] = mapped_column(
         nullable=False,
         default=3,

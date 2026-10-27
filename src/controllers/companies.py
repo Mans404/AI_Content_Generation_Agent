@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,85 +12,134 @@ from src.schemas.doctor_agent import DoctorContext
 from src.schemas.companies import DoctorDataResponse
 
 
+logger = logging.getLogger(__name__)
+
 UPLOAD_DIR = Path("uploads/Doctor_designs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+MAX_PICTURE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg"}
+ALLOWED_EXTENSIONS = (".jpg", ".jpeg")
+JPEG_START = b"\xff\xd8\xff"
+JPEG_END = b"\xff\xd9"
 
-async def create_companies(
-    doctor_name: str,
-    doctor_specialization: str,
-    yourPicture: UploadFile,
-    language: DoctorLanguage,
-    audiences: list[str],
-    posts_per_week: int,
-) -> DoctorDataResponse:
 
-    # 1. Validate filename
-    if not yourPicture.filename:
+async def _read_and_validate_picture(picture: UploadFile) -> bytes:
+    # 1. Filename
+    if not picture.filename:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="The reference design must have a filename.",
+            detail="The profile picture must have a filename.",
         )
 
-    # 2. Validate content type
-    if yourPicture.content_type != "image/jpeg":
+    # 2. Content type
+    if picture.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="The reference design must be a JPG image.",
+            detail="The profile picture must be a JPG image.",
         )
 
-    # 3. Validate file extension
-    if not yourPicture.filename.lower().endswith((".jpg", ".jpeg")):
+    # 3. Extension
+    if not picture.filename.lower().endswith(ALLOWED_EXTENSIONS):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="The reference design filename must end with .jpg or .jpeg.",
+            detail="The profile picture filename must end with .jpg or .jpeg.",
         )
 
-    # 4. Read uploaded image
-    image_data = await yourPicture.read()
+    # 4. Read with a hard size cap (never load an unbounded upload into memory)
+    try:
+        image_data = await picture.read(MAX_PICTURE_SIZE_BYTES + 1)
+    finally:
+        await picture.close()
 
-    # 5. Validate JPG signature
-    if not image_data.startswith(b"\xff\xd8") or not image_data.endswith(b"\xff\xd9"):
+    # 5. Empty / too large
+    if not image_data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The uploaded profile picture is empty.",
+        )
+
+    if len(image_data) > MAX_PICTURE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                "The profile picture must not exceed "
+                f"{MAX_PICTURE_SIZE_BYTES // (1024 * 1024)} MB."
+            ),
+        )
+
+    # 6. JPEG signature (start marker + end marker, ignoring trailing zero padding)
+    if not image_data.startswith(JPEG_START) or not image_data.rstrip(b"\x00").endswith(
+        JPEG_END
+    ):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="The uploaded file is not a valid JPG image.",
         )
 
-    # 6. Generate unique filename
-    file_extension = Path(yourPicture.filename).suffix.lower()
-    stored_filename = f"{uuid4()}{file_extension}"
+    return image_data
 
-    # 7. Save image
+
+async def create_companies(
+    doctor_name: str,
+    doctor_specialization: DoctorSpecialization,
+    yourPicture: UploadFile,
+    language: DoctorLanguage,
+    audiences: list[str],
+    types_of_medical_procedures: list[str],
+    doctor_offers: list[str],
+    advice_and_matters_that_most_people_find_confusing: list[str],
+    strengths: list[str],
+    posts_per_week: int,
+) -> DoctorDataResponse:
+
+    # 1. Validate and read the uploaded image
+    image_data = await _read_and_validate_picture(yourPicture)
+
+    # 2. Generate a unique filename (always .jpg since the content is validated JPEG)
+    stored_filename = f"{uuid4()}.jpg"
     file_path = UPLOAD_DIR / stored_filename
-    file_path.write_bytes(image_data)
 
-    # 8. Build context for the AI Agent
-    Doctor_context = DoctorContext(
-        doctor_id=uuid4(),
-        doctor_name=doctor_name,
-        doctor_specialization=doctor_specialization,
-        picture_path=str(file_path),
-    )
+    # 3. Save image without blocking the event loop
+    await asyncio.to_thread(file_path.write_bytes, image_data)
 
-    # agent_response = await doctor_agent.start(Doctor_context) WAIT  %%%%%%%
-    
-    # New 9. Store the Doctor data in the database
+    try:
+        # 4. Build context for the AI Agent
+        doctor_context = DoctorContext(
+            doctor_id=uuid4(),
+            doctor_name=doctor_name,
+            doctor_specialization=doctor_specialization,
+            picture_path=str(file_path),
+        )
 
-    Doctor = DoctorModel(
-        id=Doctor_context.doctor_id,
-        doctor_specialization=doctor_specialization,
-        name=Doctor_context.doctor_name,
-        language=language,
-        picture_path=Doctor_context.picture_path,
-        audiences=audiences,
-        posts_per_week=posts_per_week,
-    )
+        # agent_response = await doctor_agent.start(doctor_context)  # WAIT
 
-    async with async_session_factory() as session:
-        session.add(Doctor)
-        await session.commit()
+        # 5. Store the doctor data in the database
+        doctor = DoctorModel(
+            id=doctor_context.doctor_id,
+            doctor_specialization=doctor_specialization,
+            name=doctor_context.doctor_name,
+            language=language,
+            picture_path=doctor_context.picture_path,
+            audiences=audiences,
+            types_of_medical_procedures=types_of_medical_procedures,
+            doctor_offers=doctor_offers,
+            advice_and_matters_that_most_people_find_confusing=(
+                advice_and_matters_that_most_people_find_confusing
+            ),
+            strengths=strengths,
+            posts_per_week=posts_per_week,
+        )
 
-    # end of new 9. Store the Doctor data in the database
+        async with async_session_factory() as session:
+            session.add(doctor)
+            await session.commit()
+
+    except Exception:
+        # Don't leave an orphaned image if anything after saving fails
+        logger.exception("Failed to create doctor profile; removing saved picture.")
+        file_path.unlink(missing_ok=True)
+        raise
 
     return DoctorDataResponse(
         doctor_name=doctor_name,
@@ -97,5 +148,11 @@ async def create_companies(
         yourPicture_size=len(image_data),
         language=language,
         audiences=audiences,
+        types_of_medical_procedures=types_of_medical_procedures,
+        doctor_offers=doctor_offers,
+        advice_and_matters_that_most_people_find_confusing=(
+            advice_and_matters_that_most_people_find_confusing
+        ),
+        strengths=strengths,
         posts_per_week=posts_per_week,
     )

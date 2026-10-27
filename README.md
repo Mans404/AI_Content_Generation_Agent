@@ -194,6 +194,10 @@ Form fields:
 | `secondary_color` | string | No | `#FFFFFF` |
 | `tone` | string | No | `professional`; also `friendly`, `playful`, `authoritative`, or `inspirational` |
 | `audiences` | string list | No | Empty list |
+| `types_of_medical_procedures` | string list | No | Empty list |
+| `doctor_offers` | string list | No | Empty list |
+| `advice_and_matters_that_most_people_find_confusing` | string list | No | Empty list |
+| `strengths` | string list | No | Empty list; what sets this doctor apart from other doctors |
 | `posts_per_week` | integer | No | `3`, minimum `1` |
 
 Example request:
@@ -215,6 +219,9 @@ curl.exe -X POST "http://127.0.0.1:8000/api/v1/companies/" `
 Successful requests return `201 Created` with the Doctor data, stored filename,
 and uploaded file size. Invalid file types return `415 Unsupported Media Type`;
 missing filenames return `422 Unprocessable Entity`.
+
+List fields must be submitted as repeated form fields. Each item must be a
+non-empty string; surrounding whitespace is removed.
 
 ## AI generation flow
 

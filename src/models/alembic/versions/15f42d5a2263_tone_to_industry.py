@@ -1,4 +1,4 @@
-"""tone to industry
+"""tone to doctor_specialization
 
 Revision ID: 15f42d5a2263
 Revises: 4d7594d3b2c1
@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    company_industry = postgresql.ENUM(
+    company_doctor_specialization = postgresql.ENUM(
         "technology",
         "healthcare",
         "education",
@@ -37,22 +37,22 @@ def upgrade() -> None:
         "logistics",
         "agriculture",
         "other",
-        name="companyindustry",
+        name="DoctorSpecialization",
         create_type=False,
     )
     bind = op.get_bind()
-    company_industry.create(bind, checkfirst=True)
+    company_doctor_specialization.create(bind, checkfirst=True)
 
     op.add_column(
         "companies",
         sa.Column(
-            "industry",
-            company_industry,
+            "doctor_specialization",
+            company_doctor_specialization,
             nullable=False,
             server_default="other",
         )
     )
-    op.alter_column("companies", "industry", server_default=None)
+    op.alter_column("companies", "doctor_specialization", server_default=None)
     op.drop_column("companies", "tone")
 
 
@@ -80,4 +80,4 @@ def downgrade() -> None:
         )
     )
     op.alter_column("companies", "tone", server_default=None)
-    op.drop_column("companies", "industry")
+    op.drop_column("companies", "doctor_specialization")

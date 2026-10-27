@@ -42,16 +42,16 @@ def upgrade() -> None:
     op.alter_column(
         "companies",
         "reference_design_path",
-        new_column_name="logo_path",
+        new_column_name="picture_path",
     )
 
     op.execute(
         sa.text(
-            "UPDATE companies SET logo_path = '' "
-            "WHERE logo_path IS NULL"
+            "UPDATE companies SET picture_path = '' "
+            "WHERE picture_path IS NULL"
         )
     )
-    op.alter_column("companies", "logo_path", nullable=False)
+    op.alter_column("companies", "picture_path", nullable=False)
 
     op.add_column(
         "companies",
@@ -111,7 +111,7 @@ def upgrade() -> None:
     op.drop_column("companies", "ideas")
     op.drop_column("companies", "post_types")
     op.drop_column("companies", "company_theme")
-    op.drop_column("companies", "industry")
+    op.drop_column("companies", "doctor_specialization")
     op.drop_column("companies", "updated_at")
 
     op.alter_column("companies", "language", server_default=None)
@@ -129,13 +129,13 @@ def downgrade() -> None:
         "companies",
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     )
-    op.add_column("companies", sa.Column("industry", sa.String(length=255)))
+    op.add_column("companies", sa.Column("doctor_specialization", sa.String(length=255)))
     op.add_column("companies", sa.Column("company_theme", sa.Text()))
     op.add_column("companies", sa.Column("post_types", sa.JSON()))
     op.add_column("companies", sa.Column("ideas", sa.JSON()))
     op.alter_column(
         "companies",
-        "logo_path",
+        "picture_path",
         new_column_name="reference_design_path",
     )
     op.alter_column("companies", "name", new_column_name="company")

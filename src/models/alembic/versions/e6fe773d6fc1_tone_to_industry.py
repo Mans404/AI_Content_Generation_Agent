@@ -1,4 +1,4 @@
-"""tone to industry
+"""tone to doctor_specialization
 
 Revision ID: e6fe773d6fc1
 Revises: 15f42d5a2263

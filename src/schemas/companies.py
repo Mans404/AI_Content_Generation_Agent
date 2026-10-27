@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 
 from src.models.companies import DoctorLanguage, DoctorSpecialization
+from src.schemas.doctor_agent import AgentOutput
 
 
 class DoctorDataResponse(BaseModel):
@@ -15,3 +16,4 @@ class DoctorDataResponse(BaseModel):
     advice_and_matters_that_most_people_find_confusing: list[str]
     strengths: list[str]
     posts_per_week: int
+    agent_output: AgentOutput

@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import select
 
 from src.agents.doctor_agent import doctor_agent
 from src.database.companies import async_session_factory
@@ -103,24 +104,16 @@ async def create_companies(
     # 3. Save image without blocking the event loop
     await asyncio.to_thread(file_path.write_bytes, image_data)
 
+    database_committed = False
     try:
-        # 4. Build context for the AI Agent
-        doctor_context = DoctorContext(
-            doctor_id=uuid4(),
-            doctor_name=doctor_name,
-            doctor_specialization=doctor_specialization,
-            picture_path=str(file_path),
-        )
-
-        # agent_response = await doctor_agent.start(doctor_context)  # WAIT
-
-        # 5. Store the doctor data in the database
+        # 4. Store the doctor data in the database.
+        doctor_id = uuid4()
         doctor = DoctorModel(
-            id=doctor_context.doctor_id,
+            id=doctor_id,
             doctor_specialization=doctor_specialization,
-            name=doctor_context.doctor_name,
+            name=doctor_name,
             language=language,
-            picture_path=doctor_context.picture_path,
+            picture_path=str(file_path),
             audiences=audiences,
             types_of_medical_procedures=types_of_medical_procedures,
             doctor_offers=doctor_offers,
@@ -134,25 +127,60 @@ async def create_companies(
         async with async_session_factory() as session:
             session.add(doctor)
             await session.commit()
+            database_committed = True
+
+            # Re-read the committed record so the agent always receives the
+            # persisted database values.
+            saved_doctor = await session.scalar(
+                select(DoctorModel).where(DoctorModel.id == doctor_id)
+            )
+            if saved_doctor is None:
+                raise RuntimeError(
+                    f"Doctor {doctor_id} was committed but could not be retrieved."
+                )
+
+        doctor_context = DoctorContext(
+            doctor_id=saved_doctor.id,
+            doctor_name=saved_doctor.name,
+            doctor_specialization=saved_doctor.doctor_specialization,
+            language=saved_doctor.language,
+            picture_path=saved_doctor.picture_path,
+            audiences=saved_doctor.audiences,
+            types_of_medical_procedures=saved_doctor.types_of_medical_procedures,
+            doctor_offers=saved_doctor.doctor_offers,
+            advice_and_matters_that_most_people_find_confusing=(
+                saved_doctor.advice_and_matters_that_most_people_find_confusing
+            ),
+            strengths=saved_doctor.strengths,
+            posts_per_week=saved_doctor.posts_per_week,
+        )
+        agent_output = await doctor_agent.start(doctor_context)
 
     except Exception:
-        # Don't leave an orphaned image if anything after saving fails
-        logger.exception("Failed to create doctor profile; removing saved picture.")
-        file_path.unlink(missing_ok=True)
+        if database_committed:
+            logger.exception(
+                "Doctor profile was saved, but generating agent output failed."
+            )
+        else:
+            logger.exception(
+                "Failed to create doctor profile; removing saved picture."
+            )
+            file_path.unlink(missing_ok=True)
         raise
 
     return DoctorDataResponse(
-        doctor_name=doctor_name,
-        doctor_specialization=doctor_specialization,
+        doctor_name=saved_doctor.name,
+        doctor_specialization=saved_doctor.doctor_specialization,
         yourPicture_filename=stored_filename,
         yourPicture_size=len(image_data),
-        language=language,
-        audiences=audiences,
-        types_of_medical_procedures=types_of_medical_procedures,
-        doctor_offers=doctor_offers,
+        language=saved_doctor.language,
+        audiences=saved_doctor.audiences,
+        types_of_medical_procedures=saved_doctor.types_of_medical_procedures,
+        doctor_offers=saved_doctor.doctor_offers,
         advice_and_matters_that_most_people_find_confusing=(
-            advice_and_matters_that_most_people_find_confusing
+            saved_doctor.advice_and_matters_that_most_people_find_confusing
         ),
-        strengths=strengths,
-        posts_per_week=posts_per_week,
+        strengths=saved_doctor.strengths,
+        posts_per_week=saved_doctor.posts_per_week,
+        agent_output=agent_output,
     )

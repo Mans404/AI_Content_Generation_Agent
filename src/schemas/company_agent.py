@@ -7,7 +7,7 @@ class CompanyContext(BaseModel):
     company_id: UUID
     company_name: str
     industry: str
-    reference_design_path: str
+    yourPicture_path: str
 
 
 class AgentOutput(BaseModel):

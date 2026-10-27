@@ -16,12 +16,23 @@ class CompanyLanguage(str, Enum):
     EN = "EN"
 
 
-class CompanyTone(str, Enum):
-    PROFESSIONAL = "professional"
-    FRIENDLY = "friendly"
-    PLAYFUL = "playful"
-    AUTHORITATIVE = "authoritative"
-    INSPIRATIONAL = "inspirational"
+class CompanyIndustry(str, Enum):
+    TECHNOLOGY = "technology"
+    HEALTHCARE = "healthcare"
+    EDUCATION = "education"
+    FINANCE = "finance"
+    REAL_ESTATE = "real_estate"
+    RETAIL = "retail"
+    FOOD_AND_BEVERAGE = "food_and_beverage"
+    MANUFACTURING = "manufacturing"
+    CONSTRUCTION = "construction"
+    MARKETING = "marketing"
+    TRAVEL_AND_TOURISM = "travel_and_tourism"
+    AUTOMOTIVE = "automotive"
+    TELECOMMUNICATIONS = "telecommunications"
+    LOGISTICS = "logistics"
+    AGRICULTURE = "agriculture"
+    OTHER = "other"
 
 
 class CompanyModel(Base):
@@ -37,26 +48,16 @@ class CompanyModel(Base):
         default=CompanyLanguage.EN,
         nullable=False,
     )
-    logo_path: Mapped[str] = mapped_column(String(1024), nullable=False)
-    primary_color: Mapped[str] = mapped_column(
-        String(32),
-        nullable=False,
-        default="#000000",
-    )
-    secondary_color: Mapped[str] = mapped_column(
-        String(32),
-        nullable=False,
-        default="#FFFFFF",
-    )
-    tone: Mapped[CompanyTone] = mapped_column(
+    picture_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    industry: Mapped[CompanyIndustry] = mapped_column(
     SQLAlchemyEnum(
-        CompanyTone,
-        name="companytone",
+        CompanyIndustry,
+        name="companyindustry",
         values_callable=lambda enum_cls: [
             member.value for member in enum_cls
         ],
     ),
-    default=CompanyTone.PROFESSIONAL,
+    default=CompanyIndustry.OTHER,
     nullable=False,
     )
     audiences: Mapped[list[str]] = mapped_column(

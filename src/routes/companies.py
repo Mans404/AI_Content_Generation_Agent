@@ -1,9 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, File, Form, Response, UploadFile, status
 from pydantic import StringConstraints
 
-from src.controllers.companies import create_companies
+from src.controllers.companies import create_or_update_company
 from src.jwt.auth import CurrentUser
 from src.models.companies import DoctorLanguage, DoctorSpecialization
 from src.schemas.companies import DoctorDataResponse
@@ -31,13 +31,13 @@ DoctorProfileItem = Annotated[
 @companies_router.post(
     "/",
     response_model=DoctorDataResponse,
-    status_code=status.HTTP_201_CREATED,
 )
 async def create_companies_route(
     current_user: CurrentUser,
+    response: Response,
     doctor_name: DoctorName = Form(...),
     doctor_specialization: DoctorSpecialization = Form(DoctorSpecialization.OTHER),
-    yourPicture: UploadFile = File(...),
+    yourPicture: UploadFile | None = File(None),
     language: DoctorLanguage = Form(DoctorLanguage.EN),
     audiences: list[DoctorProfileItem] = Form([], max_length=MAX_LIST_ITEMS),
     types_of_medical_procedures: list[DoctorProfileItem] = Form(
@@ -51,7 +51,7 @@ async def create_companies_route(
     posts_per_week: int = Form(3, ge=1, le=MAX_POSTS_PER_WEEK),
 ) -> DoctorDataResponse:
 
-    return await create_companies(
+    doctor_response, created = await create_or_update_company(
         owner_id=current_user.id,
         doctor_name=doctor_name,
         doctor_specialization=doctor_specialization,
@@ -66,3 +66,7 @@ async def create_companies_route(
         strengths=strengths,
         posts_per_week=posts_per_week,
     )
+    response.status_code = (
+        status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    )
+    return doctor_response

@@ -4,13 +4,14 @@ from fastapi import APIRouter, File, Form, UploadFile, status
 from pydantic import StringConstraints
 
 from src.controllers.companies import create_companies
+from src.jwt.auth import CurrentUser
 from src.models.companies import DoctorLanguage, DoctorSpecialization
 from src.schemas.companies import DoctorDataResponse
 
 
 companies_router = APIRouter(
     prefix="/api/v1/companies",
-    tags=["api_v1", "companies"],
+    tags=["companies"],
 )
 
 MAX_LIST_ITEMS = 20
@@ -33,6 +34,7 @@ DoctorProfileItem = Annotated[
     status_code=status.HTTP_201_CREATED,
 )
 async def create_companies_route(
+    current_user: CurrentUser,
     doctor_name: DoctorName = Form(...),
     doctor_specialization: DoctorSpecialization = Form(DoctorSpecialization.OTHER),
     yourPicture: UploadFile = File(...),
@@ -50,6 +52,7 @@ async def create_companies_route(
 ) -> DoctorDataResponse:
 
     return await create_companies(
+        owner_id=current_user.id,
         doctor_name=doctor_name,
         doctor_specialization=doctor_specialization,
         yourPicture=yourPicture,

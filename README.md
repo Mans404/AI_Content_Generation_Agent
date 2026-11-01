@@ -4,8 +4,9 @@ An early-stage FastAPI service for creating Doctor content profiles and preparin
 them for AI-generated social media strategies.
 
 The project currently accepts a Doctor's basic information and visual reference
-design, stores the profile in PostgreSQL, retrieves the committed profile, and
-passes it to a LangChain agent that generates structured content ideas.
+design, stores one profile per authenticated user in PostgreSQL, retrieves the
+committed profile, and passes it to a LangChain agent that generates structured
+content ideas.
 
 ## Current status
 
@@ -30,7 +31,8 @@ passes it to a LangChain agent that generates structured content ideas.
 - There are no automated tests or CI workflows in the repository yet.
 - JWT authentication and ownership checks protect Doctor creation.
 - There is no image processing pipeline.
-- There is no endpoint for reading, updating, or deleting companies.
+- The company endpoint supports updating the authenticated user's existing
+  profile by sending another request with the same form fields.
 
 ## How the project evolved
 
@@ -197,12 +199,17 @@ The interactive API documentation is then available at:
 
 ## API reference
 
-### Create a Doctor
+### Create or update a Doctor
 
 ```http
 POST /api/v1/companies/
 Content-Type: multipart/form-data
 ```
+
+The first request for an authenticated user creates their profile and returns
+`201 Created`. Later requests update that same profile and return `200 OK`.
+The `yourPicture` field is required when creating a profile and optional when
+updating one; omitting it preserves the existing picture.
 
 Form fields:
 
@@ -210,7 +217,7 @@ Form fields:
 | --- | --- | --- | --- |
 | `doctor_name` | string | Yes | At least one character |
 | `doctor_specialization` | string | Yes | At least one character |
-| `reference_design` | file | Yes | JPG/JPEG image |
+| `yourPicture` | file | Create only | JPG/JPEG image; omitted during an update to keep the current image |
 | `language` | string | No | `EN`; also accepts `AR` |
 | `primary_color` | string | No | `#000000` |
 | `secondary_color` | string | No | `#FFFFFF` |

@@ -7,6 +7,7 @@ from sqlalchemy import (
     Index,
     JSON,
     String,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -19,7 +20,10 @@ class Base(DeclarativeBase):
 
 class DoctorModel(Base):
     __tablename__ = "companies"
-    __table_args__ = (Index("ix_companies_owner_id", "owner_id"),)
+    __table_args__ = (
+        Index("ix_companies_owner_id", "owner_id"),
+        UniqueConstraint("owner_id", name="uq_companies_owner_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),

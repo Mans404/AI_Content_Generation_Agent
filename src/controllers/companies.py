@@ -81,11 +81,11 @@ async def _read_and_validate_picture(picture: UploadFile) -> bytes:
     return image_data
 
 
-async def create_companies(
+async def create_or_update_company(
     owner_id: UUID,
     doctor_name: str,
     doctor_specialization: DoctorSpecialization,
-    yourPicture: UploadFile,
+    yourPicture: UploadFile | None,
     language: DoctorLanguage,
     audiences: list[str],
     types_of_medical_procedures: list[str],
@@ -93,52 +93,77 @@ async def create_companies(
     advice_and_matters_that_most_people_find_confusing: list[str],
     strengths: list[str],
     posts_per_week: int,
-) -> DoctorDataResponse:
+) -> tuple[DoctorDataResponse, bool]:
+    # Validate the upload first: it needs no DB access, so bad files fail fast.
+    image_data: bytes | None = None
+    if yourPicture is not None:
+        image_data = await _read_and_validate_picture(yourPicture)
 
-    # 1. Validate and read the uploaded image
-    image_data = await _read_and_validate_picture(yourPicture)
-
-    # 2. Generate a unique filename (always .jpg since the content is validated JPEG)
-    stored_filename = f"{uuid4()}.jpg"
-    file_path = UPLOAD_DIR / stored_filename
-
-    # 3. Save image without blocking the event loop
-    await asyncio.to_thread(file_path.write_bytes, image_data)
-
+    file_path: Path | None = None
+    old_file_path: Path | None = None
     database_committed = False
-    try:
-        # 4. Store the doctor data in the database.
-        doctor_id = uuid4()
-        doctor = DoctorModel(
-            id=doctor_id,
-            owner_id=owner_id,
-            doctor_specialization=doctor_specialization,
-            name=doctor_name,
-            language=language,
-            picture_path=str(file_path),
-            audiences=audiences,
-            types_of_medical_procedures=types_of_medical_procedures,
-            doctor_offers=doctor_offers,
-            advice_and_matters_that_most_people_find_confusing=(
-                advice_and_matters_that_most_people_find_confusing
-            ),
-            strengths=strengths,
-            posts_per_week=posts_per_week,
-        )
 
+    try:
         async with async_session_factory() as session:
-            session.add(doctor)
+            doctor = await session.scalar(
+                select(DoctorModel).where(DoctorModel.owner_id == owner_id)
+            )
+            created = doctor is None
+
+            # Fail fast: creating a profile requires a picture. Checked before
+            # anything is written to disk.
+            if created and image_data is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="The profile picture is required when creating a profile.",
+                )
+
+            # All request checks passed; only now touch the filesystem.
+            if image_data is not None:
+                file_path = UPLOAD_DIR / f"{uuid4()}.jpg"
+                await asyncio.to_thread(file_path.write_bytes, image_data)
+
+            if doctor is None:
+                doctor = DoctorModel(
+                    id=uuid4(),
+                    owner_id=owner_id,
+                    picture_path=str(file_path),
+                )
+                session.add(doctor)
+            elif file_path is not None:
+                old_file_path = Path(doctor.picture_path)
+                doctor.picture_path = str(file_path)
+
+            doctor.doctor_specialization = doctor_specialization
+            doctor.name = doctor_name
+            doctor.language = language
+            doctor.audiences = audiences
+            doctor.types_of_medical_procedures = types_of_medical_procedures
+            doctor.doctor_offers = doctor_offers
+            doctor.advice_and_matters_that_most_people_find_confusing = (
+                advice_and_matters_that_most_people_find_confusing
+            )
+            doctor.strengths = strengths
+            doctor.posts_per_week = posts_per_week
+
             await session.commit()
             database_committed = True
 
-            # Re-read the committed record so the agent always receives the
-            # persisted database values.
             saved_doctor = await session.scalar(
-                select(DoctorModel).where(DoctorModel.id == doctor_id)
+                select(DoctorModel).where(DoctorModel.id == doctor.id)
             )
             if saved_doctor is None:
                 raise RuntimeError(
-                    f"Doctor {doctor_id} was committed but could not be retrieved."
+                    f"Doctor {doctor.id} was committed but could not be retrieved."
+                )
+
+        # Remove the replaced picture. A failure here must not fail the request.
+        if old_file_path is not None and old_file_path != file_path:
+            try:
+                old_file_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "Could not delete old picture %s", old_file_path, exc_info=True
                 )
 
         doctor_context = DoctorContext(
@@ -158,31 +183,43 @@ async def create_companies(
         )
         agent_output = await doctor_agent.start(doctor_context)
 
+    except HTTPException:
+        # Client errors: no stack trace in the logs. Clean up any new file.
+        if not database_committed and file_path is not None:
+            file_path.unlink(missing_ok=True)
+        raise
+
     except Exception:
         if database_committed:
             logger.exception(
                 "Doctor profile was saved, but generating agent output failed."
             )
         else:
-            logger.exception(
-                "Failed to create doctor profile; removing saved picture."
-            )
-            file_path.unlink(missing_ok=True)
+            logger.exception("Failed to save doctor profile; removing new picture.")
+            if file_path is not None:
+                file_path.unlink(missing_ok=True)
         raise
 
-    return DoctorDataResponse(
-        doctor_name=saved_doctor.name,
-        doctor_specialization=saved_doctor.doctor_specialization,
-        yourPicture_filename=stored_filename,
-        yourPicture_size=len(image_data),
-        language=saved_doctor.language,
-        audiences=saved_doctor.audiences,
-        types_of_medical_procedures=saved_doctor.types_of_medical_procedures,
-        doctor_offers=saved_doctor.doctor_offers,
-        advice_and_matters_that_most_people_find_confusing=(
-            saved_doctor.advice_and_matters_that_most_people_find_confusing
+    return (
+        DoctorDataResponse(
+            doctor_name=saved_doctor.name,
+            doctor_specialization=saved_doctor.doctor_specialization,
+            yourPicture_filename=Path(saved_doctor.picture_path).name,
+            yourPicture_size=(
+                len(image_data)
+                if image_data is not None
+                else Path(saved_doctor.picture_path).stat().st_size
+            ),
+            language=saved_doctor.language,
+            audiences=saved_doctor.audiences,
+            types_of_medical_procedures=saved_doctor.types_of_medical_procedures,
+            doctor_offers=saved_doctor.doctor_offers,
+            advice_and_matters_that_most_people_find_confusing=(
+                saved_doctor.advice_and_matters_that_most_people_find_confusing
+            ),
+            strengths=saved_doctor.strengths,
+            posts_per_week=saved_doctor.posts_per_week,
+            agent_output=agent_output,
         ),
-        strengths=saved_doctor.strengths,
-        posts_per_week=saved_doctor.posts_per_week,
-        agent_output=agent_output,
+        created,
     )

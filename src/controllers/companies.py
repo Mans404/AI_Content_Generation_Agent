@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
@@ -82,6 +82,7 @@ async def _read_and_validate_picture(picture: UploadFile) -> bytes:
 
 
 async def create_companies(
+    owner_id: UUID,
     doctor_name: str,
     doctor_specialization: DoctorSpecialization,
     yourPicture: UploadFile,
@@ -110,6 +111,7 @@ async def create_companies(
         doctor_id = uuid4()
         doctor = DoctorModel(
             id=doctor_id,
+            owner_id=owner_id,
             doctor_specialization=doctor_specialization,
             name=doctor_name,
             language=language,

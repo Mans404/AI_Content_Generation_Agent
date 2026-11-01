@@ -1,46 +1,34 @@
 from datetime import datetime
-from enum import Enum
 from uuid import UUID, uuid4
-
-from sqlalchemy import DateTime, JSON, String, Uuid, func
-from sqlalchemy import DateTime, JSON, String, Uuid, func, Enum as SQLAlchemyEnum
+from sqlalchemy import (
+    DateTime,
+    Enum as SQLAlchemyEnum,
+    ForeignKey,
+    Index,
+    JSON,
+    String,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from src.models.enums import DoctorLanguage, DoctorSpecialization
 
 
 class Base(DeclarativeBase):
     """Base class for SQLAlchemy models."""
 
-
-class DoctorLanguage(str, Enum):
-    AR = "AR"
-    EN = "EN"
-
-
-class DoctorSpecialization(str, Enum):
-    INTERNAL_MEDICINE = "internal_medicine"
-    DENTISTRY = "dentistry"
-    DERMATOLOGY = "dermatology"
-    CARDIOLOGY = "cardiology"
-    NEUROLOGY = "neurology"
-    PEDIATRICS = "pediatrics"
-    ORTHOPEDICS = "orthopedics"
-    OPHTHALMOLOGY = "ophthalmology"
-    OBSTETRICS_AND_GYNECOLOGY = "obstetrics_and_gynecology"
-    UROLOGY = "urology"
-    GENERAL_SURGERY = "general_surgery"
-    PSYCHIATRY = "psychiatry"
-    ENT = "ent"
-    PHYSIOTHERAPY = "physiotherapy"
-    OTHER = "other"
-
-
 class DoctorModel(Base):
     __tablename__ = "companies"
+    __table_args__ = (Index("ix_companies_owner_id", "owner_id"),)
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
         primary_key=True,
         default=uuid4,
+    )
+    owner_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     language: Mapped[DoctorLanguage] = mapped_column(
@@ -92,4 +80,29 @@ class DoctorModel(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+
+class UserModel(Base):
+    __tablename__ = "users"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    user_name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class RevokedTokenModel(Base):
+    __tablename__ = "revoked_tokens"
+
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
     )

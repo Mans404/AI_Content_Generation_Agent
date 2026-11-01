@@ -1,10 +1,9 @@
-###############################
 from configparser import RawConfigParser
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-
+#--- Read the database URL from the alembic.ini file
 alembic_config = RawConfigParser()
 alembic_config.read(
     Path(__file__).resolve().parents[1] / "models" / "alembic.ini"
@@ -19,6 +18,8 @@ if database_url.startswith("postgresql://"):
         "postgresql+psycopg://",
         1,
     )
+#--- Read the database URL from the alembic.ini file
+
 
 engine = create_async_engine(database_url)
 async_session_factory = async_sessionmaker(
@@ -26,4 +27,3 @@ async_session_factory = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
-###############################

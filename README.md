@@ -28,8 +28,8 @@ passes it to a LangChain agent that generates structured content ideas.
 - Generated ideas, post types, and the Doctor theme are returned by the creation
   endpoint but are not persisted in the current Doctor-profile schema.
 - There are no automated tests or CI workflows in the repository yet.
-- There is no authentication, authorization, file-size limit, or image
-  processing pipeline.
+- JWT authentication and ownership checks protect Doctor creation.
+- There is no image processing pipeline.
 - There is no endpoint for reading, updating, or deleting companies.
 
 ## How the project evolved
@@ -131,6 +131,29 @@ When enabling the agent, provide the OpenRouter key through the environment:
 
 ```powershell
 $env:OPENROUTER_API_KEY = "your-key"
+```
+
+The API requires a high-entropy JWT signing key:
+
+```powershell
+$env:JWT_SECRET_KEY = "a-random-secret-at-least-32-characters-long"
+$env:JWT_ISSUER = "content-generation-api"
+```
+
+Register or log in to receive a bearer token. Include it when creating a
+Doctor profile:
+
+```powershell
+$token = (Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8000/auth/register" `
+  -ContentType "application/json" `
+  -Body '{"username":"example","password":"use-a-strong-password"}').access_token
+
+curl.exe -X POST "http://127.0.0.1:8000/api/v1/companies/" `
+  -H "Authorization: Bearer $token" `
+  -F "doctor_name=Dr. Example" `
+  -F "doctor_specialization=other" `
+  -F "yourPicture=@C:\path\to\reference.jpg"
 ```
 
 Do not commit database credentials or API keys. A local, ignored configuration
@@ -260,7 +283,7 @@ persisting and exposing the generated output.
 3. Decide on synchronous versus background AI generation.
 4. Persist generated ideas, post types, and themes in a dedicated model or
    related table.
-5. Add Doctor read/update/delete endpoints and authentication.
+5. Add Doctor read/update/delete endpoints with the same ownership checks.
 6. Add upload size limits, stronger image validation, and storage cleanup.
 7. Add linting, CI, and deployment configuration.
 

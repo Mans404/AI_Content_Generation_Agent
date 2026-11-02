@@ -6,6 +6,7 @@ from pydantic import StringConstraints
 from src.controllers.companies import (
     create_or_update_company,
     create_or_update_monthly_ideas,
+    start_planning,
 )
 from src.jwt.auth import CurrentUser
 from src.models.companies import DoctorLanguage, DoctorSpecialization
@@ -13,6 +14,7 @@ from src.schemas.companies import (
     DoctorDataResponse,
     MonthlyIdeasRequest,
     MonthlyIdeasResponse,
+    StartPlanningResponse,
 )
 
 
@@ -86,3 +88,13 @@ async def create_monthly_ideas_route(
             monthly_ideas.advice_and_matters_that_most_people_find_confusing
         ),
     )
+
+
+@companies_router.post(
+    "/start_planning",
+    response_model=StartPlanningResponse,
+)
+async def start_planning_route(
+    current_user: CurrentUser,
+) -> StartPlanningResponse:
+    return await start_planning(owner_id=current_user.id)

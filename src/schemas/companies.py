@@ -29,3 +29,7 @@ class MonthlyIdeasRequest(BaseModel):
 
 class MonthlyIdeasResponse(MonthlyIdeasRequest):
     month_start: datetime
+
+
+class StartPlanningResponse(MonthlyIdeasResponse):
+    agent_output: AgentOutput

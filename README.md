@@ -188,7 +188,10 @@ The migration chain currently includes:
 
 Monthly ideas are managed separately through
 `POST /api/v1/companies/monthly-ideas`. Each list accepts a maximum of 10
-items for the current month.
+items for the current month. Planning is started separately through
+`POST /api/v1/companies/start_planning` without a request body; that endpoint
+loads the authenticated Doctor profile and its current month's stored
+`monthly_ideas`, then returns generated `agent_output`.
 
 ## Running the API
 

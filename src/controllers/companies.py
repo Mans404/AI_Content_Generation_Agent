@@ -16,7 +16,11 @@ from src.models.companies import (
     MonthlyIdeasModel,
 )
 from src.schemas.doctor_agent import DoctorContext
-from src.schemas.companies import DoctorDataResponse, MonthlyIdeasResponse
+from src.schemas.companies import (
+    DoctorDataResponse,
+    MonthlyIdeasResponse,
+    StartPlanningResponse,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -307,4 +311,72 @@ async def create_or_update_monthly_ideas(
         advice_and_matters_that_most_people_find_confusing=(
             advice_and_matters_that_most_people_find_confusing
         ),
+    )
+
+
+async def start_planning(
+    owner_id: UUID,
+) -> StartPlanningResponse:
+    month_start = datetime.now(timezone.utc).replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(DoctorModel, MonthlyIdeasModel)
+            .join(
+                MonthlyIdeasModel,
+                MonthlyIdeasModel.company_id == DoctorModel.id,
+            )
+            .where(
+                DoctorModel.owner_id == owner_id,
+                MonthlyIdeasModel.month_start == month_start,
+            )
+        )
+        company_and_monthly_ideas = result.one_or_none()
+
+        if company_and_monthly_ideas is None:
+            doctor = await session.scalar(
+                select(DoctorModel).where(DoctorModel.owner_id == owner_id)
+            )
+            if doctor is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Create a company profile before starting planning.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Add monthly ideas before starting planning.",
+            )
+
+        doctor, monthly_ideas = company_and_monthly_ideas
+
+    doctor_context = DoctorContext(
+        doctor_id=doctor.id,
+        doctor_name=doctor.name,
+        doctor_specialization=doctor.doctor_specialization,
+        language=doctor.language,
+        picture_path=doctor.picture_path,
+        audiences=doctor.audiences,
+        types_of_medical_procedures=doctor.types_of_medical_procedures,
+        doctor_offers=monthly_ideas.doctor_offers,
+        advice_and_matters_that_most_people_find_confusing=(
+            monthly_ideas.advice_and_matters_that_most_people_find_confusing
+        ),
+        strengths=doctor.strengths,
+        posts_per_week=doctor.posts_per_week,
+    )
+    agent_output = await doctor_agent.start(doctor_context)
+
+    return StartPlanningResponse(
+        month_start=monthly_ideas.month_start,
+        doctor_offers=monthly_ideas.doctor_offers,
+        advice_and_matters_that_most_people_find_confusing=(
+            monthly_ideas.advice_and_matters_that_most_people_find_confusing
+        ),
+        agent_output=agent_output,
     )

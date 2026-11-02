@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -8,9 +9,14 @@ from sqlalchemy import select
 
 from src.agents.doctor_agent import doctor_agent
 from src.database.companies import async_session_factory
-from src.models.companies import DoctorLanguage, DoctorModel, DoctorSpecialization
+from src.models.companies import (
+    DoctorLanguage,
+    DoctorModel,
+    DoctorSpecialization,
+    MonthlyIdeasModel,
+)
 from src.schemas.doctor_agent import DoctorContext
-from src.schemas.companies import DoctorDataResponse
+from src.schemas.companies import DoctorDataResponse, MonthlyIdeasResponse
 
 
 logger = logging.getLogger(__name__)
@@ -23,6 +29,7 @@ ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg"}
 ALLOWED_EXTENSIONS = (".jpg", ".jpeg")
 JPEG_START = b"\xff\xd8\xff"
 JPEG_END = b"\xff\xd9"
+MAX_MONTHLY_IDEAS = 10
 
 
 async def _read_and_validate_picture(picture: UploadFile) -> bytes:
@@ -89,8 +96,6 @@ async def create_or_update_company(
     language: DoctorLanguage,
     audiences: list[str],
     types_of_medical_procedures: list[str],
-    doctor_offers: list[str],
-    advice_and_matters_that_most_people_find_confusing: list[str],
     strengths: list[str],
     posts_per_week: int,
 ) -> tuple[DoctorDataResponse, bool]:
@@ -106,7 +111,9 @@ async def create_or_update_company(
     try:
         async with async_session_factory() as session:
             doctor = await session.scalar(
-                select(DoctorModel).where(DoctorModel.owner_id == owner_id)
+                select(DoctorModel)
+                .where(DoctorModel.owner_id == owner_id)
+                .with_for_update()
             )
             created = doctor is None
 
@@ -139,9 +146,19 @@ async def create_or_update_company(
             doctor.language = language
             doctor.audiences = audiences
             doctor.types_of_medical_procedures = types_of_medical_procedures
-            doctor.doctor_offers = doctor_offers
-            doctor.advice_and_matters_that_most_people_find_confusing = (
-                advice_and_matters_that_most_people_find_confusing
+            month_start = datetime.now(timezone.utc).replace(
+                day=1,
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            monthly_ideas = await session.scalar(
+                select(MonthlyIdeasModel)
+                .where(
+                    MonthlyIdeasModel.company_id == doctor.id,
+                    MonthlyIdeasModel.month_start == month_start,
+                )
             )
             doctor.strengths = strengths
             doctor.posts_per_week = posts_per_week
@@ -174,9 +191,13 @@ async def create_or_update_company(
             picture_path=saved_doctor.picture_path,
             audiences=saved_doctor.audiences,
             types_of_medical_procedures=saved_doctor.types_of_medical_procedures,
-            doctor_offers=saved_doctor.doctor_offers,
+            doctor_offers=(
+                monthly_ideas.doctor_offers if monthly_ideas is not None else []
+            ),
             advice_and_matters_that_most_people_find_confusing=(
-                saved_doctor.advice_and_matters_that_most_people_find_confusing
+                monthly_ideas.advice_and_matters_that_most_people_find_confusing
+                if monthly_ideas is not None
+                else []
             ),
             strengths=saved_doctor.strengths,
             posts_per_week=saved_doctor.posts_per_week,
@@ -213,13 +234,77 @@ async def create_or_update_company(
             language=saved_doctor.language,
             audiences=saved_doctor.audiences,
             types_of_medical_procedures=saved_doctor.types_of_medical_procedures,
-            doctor_offers=saved_doctor.doctor_offers,
-            advice_and_matters_that_most_people_find_confusing=(
-                saved_doctor.advice_and_matters_that_most_people_find_confusing
-            ),
             strengths=saved_doctor.strengths,
             posts_per_week=saved_doctor.posts_per_week,
             agent_output=agent_output,
         ),
         created,
+    )
+
+
+async def create_or_update_monthly_ideas(
+    owner_id: UUID,
+    doctor_offers: list[str],
+    advice_and_matters_that_most_people_find_confusing: list[str],
+) -> MonthlyIdeasResponse:
+    if (
+        len(doctor_offers) > MAX_MONTHLY_IDEAS
+        or len(advice_and_matters_that_most_people_find_confusing)
+        > MAX_MONTHLY_IDEAS
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Doctor offers and confusing matters are limited to "
+                f"{MAX_MONTHLY_IDEAS} items per month."
+            ),
+        )
+
+    month_start = datetime.now(timezone.utc).replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    async with async_session_factory() as session:
+        doctor = await session.scalar(
+            select(DoctorModel)
+            .where(DoctorModel.owner_id == owner_id)
+            .with_for_update()
+        )
+        if doctor is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Create a company profile before adding monthly ideas.",
+            )
+
+        monthly_ideas = await session.scalar(
+            select(MonthlyIdeasModel)
+            .where(
+                MonthlyIdeasModel.company_id == doctor.id,
+                MonthlyIdeasModel.month_start == month_start,
+            )
+            .with_for_update()
+        )
+        if monthly_ideas is None:
+            monthly_ideas = MonthlyIdeasModel(
+                company_id=doctor.id,
+                month_start=month_start,
+            )
+            session.add(monthly_ideas)
+
+        monthly_ideas.doctor_offers = doctor_offers
+        monthly_ideas.advice_and_matters_that_most_people_find_confusing = (
+            advice_and_matters_that_most_people_find_confusing
+        )
+        await session.commit()
+
+    return MonthlyIdeasResponse(
+        month_start=month_start,
+        doctor_offers=doctor_offers,
+        advice_and_matters_that_most_people_find_confusing=(
+            advice_and_matters_that_most_people_find_confusing
+        ),
     )

@@ -61,16 +61,6 @@ class DoctorModel(Base):
         nullable=False,
         default=list,
     )
-    doctor_offers: Mapped[list[str]] = mapped_column(
-        JSON,
-        nullable=False,
-        default=list,
-    )
-    advice_and_matters_that_most_people_find_confusing: Mapped[list[str]] = mapped_column(
-        JSON,
-        nullable=False,
-        default=list,
-    )
     strengths: Mapped[list[str]] = mapped_column(
         JSON,
         nullable=False,
@@ -85,6 +75,48 @@ class DoctorModel(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class MonthlyIdeasModel(Base):
+    __tablename__ = "monthly_ideas"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "month_start",
+            name="uq_monthly_ideas_company_month",
+        ),
+        Index("ix_monthly_ideas_company_id", "company_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    month_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    doctor_offers: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    advice_and_matters_that_most_people_find_confusing: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
 
 class UserModel(Base):
     __tablename__ = "users"

@@ -183,6 +183,12 @@ The migration chain currently includes:
 - `0be0239c931e` — initial companies/content-output schema.
 - `4a3f6c7d8e9b` — converts the table to the Doctor-profile schema.
 - `09cfdb09463c` — expands `picture_path` to 1024 characters.
+- `c9e2f4a6b8d0` — moves monthly doctor offers and confusing matters into
+  `monthly_ideas`, with one record per Doctor and month.
+
+Monthly ideas are managed separately through
+`POST /api/v1/companies/monthly-ideas`. Each list accepts a maximum of 10
+items for the current month.
 
 ## Running the API
 
@@ -224,8 +230,6 @@ Form fields:
 | `tone` | string | No | `professional`; also `friendly`, `playful`, `authoritative`, or `inspirational` |
 | `audiences` | string list | No | Empty list |
 | `types_of_medical_procedures` | string list | No | Empty list |
-| `doctor_offers` | string list | No | Empty list |
-| `advice_and_matters_that_most_people_find_confusing` | string list | No | Empty list |
 | `strengths` | string list | No | Empty list; what sets this doctor apart from other doctors |
 | `posts_per_week` | integer | No | `3`, minimum `1` |
 

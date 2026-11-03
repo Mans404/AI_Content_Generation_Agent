@@ -4,7 +4,7 @@ import dotenv
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel
+from pydantic import create_model, conlist
 
 from src.schemas.doctor_agent import AgentOutput, DoctorContext
 from src.prompt_loader import PromptLoader
@@ -22,16 +22,24 @@ model = init_chat_model(
 )
 
 
-agent = create_agent(
-    model=model,
-    system_prompt=prompts.system(),
-    response_format=AgentOutput,
-)
-
-
 class DoctorAgent:
 
     async def start(self, Doctor: DoctorContext) -> AgentOutput:
+        expected_count = Doctor.posts_per_week * 4
+        output_schema = create_model(
+            "AgentOutputForRequestedPostCount",
+            __base__=AgentOutput,
+            ideas=(conlist(str, min_length=expected_count, max_length=expected_count), ...),
+            post_types=(
+                conlist(str, min_length=expected_count, max_length=expected_count),
+                ...,
+            ),
+        )
+        agent = create_agent(
+            model=model,
+            system_prompt=prompts.system(),
+            response_format=output_schema,
+        )
 
         user_prompt = prompts.user(
             doctor_name=Doctor.doctor_name,
@@ -65,7 +73,16 @@ class DoctorAgent:
             config=config,
         )
 
-        return response["structured_response"]
+        structured_response = response["structured_response"]
+        response_data = (
+            structured_response.model_dump()
+            if isinstance(structured_response, AgentOutput)
+            else structured_response
+        )
+        return AgentOutput.model_validate(
+            response_data,
+            context={"posts_per_week": Doctor.posts_per_week},
+        )
 
 
 doctor_agent = DoctorAgent()

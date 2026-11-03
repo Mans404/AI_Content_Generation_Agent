@@ -270,7 +270,6 @@ The AI layer is implemented in [`src/agents/doctor_agent.py`](src/agents/doctor_
 4. LangChain returns a structured `AgentOutput` containing:
    - `ideas`
    - `post_types`
-   - `doctor_theme`
 
 At the current stage, the controller creates the context but leaves the agent
 call disabled. Connecting that call requires deciding whether generation should

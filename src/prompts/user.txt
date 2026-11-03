@@ -1,17 +1,27 @@
-Doctor Name: {doctor_name}
-doctor_specialization: {doctor_specialization}
-Language: {language}
-Audiences: {audiences}
-Types of Medical Procedures: {types_of_medical_procedures}
-Doctor Offers: {doctor_offers}
-Advice and Matters That Most People Find Confusing: {advice_and_matters_that_most_people_find_confusing}
-Strengths: {strengths}
-Posts Per Week: {posts_per_week}
+Create a social media content plan for the following doctor profile.
 
+<doctor_profile>
+Doctor name: {doctor_name}
+Specialization: {doctor_specialization}
+Requested language: {language}
+Target audiences: {audiences}
+Medical procedures and services: {types_of_medical_procedures}
+Current offers: {doctor_offers}
+Topics patients find confusing: {advice_and_matters_that_most_people_find_confusing}
+Differentiating strengths: {strengths}
+Requested posts per week: {posts_per_week}
+</doctor_profile>
 
-Analyze this doctor and generate suitable social media post ideas.
+Planning requirements:
+1. Balance the plan across relevant educational, trust-building, engagement, and
+   ethical promotional content. Do not force categories that do not fit the profile.
+2. Address the target audiences and confusing topics in plain, approachable language.
+3. Use the doctor's procedures, offers, and strengths only when they are relevant.
+4. For each idea, provide a short, descriptive post type such as educational carousel,
+   short video, FAQ, myth versus fact, checklist, patient journey, or announcement.
+5. Make the ideas suitable for social media, specific enough for a content creator to
+   develop, and safe for general health education.
 
-Return:
-- multiple post ideas
-- a post type for each idea
-- the overall doctor theme
+Return the result through the application's structured response fields:
+- `ideas`: the post ideas, in publishing order
+- `post_types`: one matching post type for each idea

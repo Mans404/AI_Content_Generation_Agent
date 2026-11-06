@@ -22,6 +22,8 @@ content ideas.
 - Doctor profile persistence with Alembic migrations.
 - Pydantic response validation.
 - LangChain/OpenRouter agent definitions with structured output models.
+- A design-prompt agent that converts each generated idea into a prompt for a
+  separate design language model.
 - Prompt files separated from Python code.
 
 ### Not yet connected
@@ -66,7 +68,8 @@ Doctor controller
   |-- persists DoctorModel -> PostgreSQL
   |-- retrieves DoctorModel from PostgreSQL
   |-- creates DoctorContext from the retrieved row
-  |-- invokes DoctorAgent -> structured AgentOutput -> persists ideas batch
+  |-- invokes DoctorAgent -> structured AgentOutput -> persists ideas and post types
+  |-- POST /design-prompts invokes DesignPromptAgent -> persists design prompts
   |
   v
 DoctorDataResponse + AgentOutput
@@ -88,6 +91,7 @@ AI layer
 | [`src/schemas/doctor_agent.py`](src/schemas/doctor_agent.py) | AI input and structured output models. |
 | [`src/database/companies.py`](src/database/companies.py) | Reads the Alembic database URL and creates the async SQLAlchemy session factory. |
 | [`src/agents/doctor_agent.py`](src/agents/doctor_agent.py) | Configures the LangChain agent and OpenRouter chat model. |
+| [`src/agents/design_prompt_agent.py`](src/agents/design_prompt_agent.py) | Converts generated ideas into image-design prompts for a separate design LLM. |
 | [`src/prompt_loader.py`](src/prompt_loader.py) | Loads and formats prompt files. |
 | [`src/prompts/`](src/prompts/) | System and user prompts for social media strategy generation. |
 | [`src/models/alembic/`](src/models/alembic/) | Alembic environment and schema migrations. |
@@ -186,6 +190,7 @@ The migration chain currently includes:
 - `c9e2f4a6b8d0` — moves monthly doctor offers and confusing matters into
   `monthly_ideas`, with one record per Doctor and month.
 - `b7c4d2e9f1a0` — adds `ideas` for generated ideas and matching post types.
+- `d8e5f3a1b7c9` — adds design prompts to generated idea batches.
 
 Monthly ideas are managed separately through
 `POST /api/v1/companies/monthly-ideas`. Each list accepts a maximum of 10
@@ -195,6 +200,12 @@ loads the authenticated Doctor profile and its current month's stored
 `monthly_ideas`, generates an `agent_output`, stores its ideas and post types as
 a new `ideas` row, then returns the generated output. Profile creation follows
 the same persistence flow.
+
+Design prompts are generated separately through
+`POST /api/v1/companies/design-prompts` without a request body. This endpoint
+loads the latest saved ideas batch, invokes `DesignPromptAgent`, stores the
+result in that batch, and returns `design_prompts`. Each
+`design_prompts[i]` corresponds to the saved idea and post type at index `i`.
 
 ## Running the API
 

@@ -13,3 +13,9 @@ class PromptLoader:
 
     def user(self, **kwargs) -> str:
         return self._read("user.txt").format(**kwargs)
+
+    def design_system(self, **kwargs) -> str:
+        return self._read("design_system.txt").format(**kwargs)
+
+    def design_user(self, **kwargs) -> str:
+        return self._read("design_user.txt").format(**kwargs)

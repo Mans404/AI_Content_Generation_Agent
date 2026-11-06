@@ -33,3 +33,7 @@ class MonthlyIdeasResponse(MonthlyIdeasRequest):
 
 class StartPlanningResponse(MonthlyIdeasResponse):
     agent_output: AgentOutput
+
+
+class DesignPromptsResponse(BaseModel):
+    design_prompts: list[str]

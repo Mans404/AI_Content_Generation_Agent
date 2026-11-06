@@ -143,6 +143,11 @@ class IdeasModel(Base):
         nullable=False,
         default=list,
     )
+    design_prompts: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

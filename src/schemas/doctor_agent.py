@@ -38,3 +38,13 @@ class AgentOutput(BaseModel):
                 )
 
         return self
+
+
+class DesignPromptOutput(BaseModel):
+    design_prompts: list[str]
+
+    @model_validator(mode="after")
+    def validate_prompt_count(self) -> "DesignPromptOutput":
+        if not self.design_prompts:
+            raise ValueError("design_prompts must contain at least one prompt")
+        return self

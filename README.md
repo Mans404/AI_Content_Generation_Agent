@@ -26,8 +26,8 @@ content ideas.
 
 ### Not yet connected
 
-- Generated ideas, post types, and the Doctor theme are returned by the creation
-  endpoint but are not persisted in the current Doctor-profile schema.
+- Generated ideas and post types are persisted as generated batches in the
+  `ideas` table and returned by the creation and planning endpoints.
 - There are no automated tests or CI workflows in the repository yet.
 - JWT authentication and ownership checks protect Doctor creation.
 - There is no image processing pipeline.
@@ -66,7 +66,7 @@ Doctor controller
   |-- persists DoctorModel -> PostgreSQL
   |-- retrieves DoctorModel from PostgreSQL
   |-- creates DoctorContext from the retrieved row
-  |-- invokes DoctorAgent -> structured AgentOutput
+  |-- invokes DoctorAgent -> structured AgentOutput -> persists ideas batch
   |
   v
 DoctorDataResponse + AgentOutput
@@ -83,7 +83,7 @@ AI layer
 | [`src/main.py`](src/main.py) | Creates the FastAPI app and registers routers. |
 | [`src/routes/companies.py`](src/routes/companies.py) | Defines the Doctor API route and form fields. |
 | [`src/controllers/companies.py`](src/controllers/companies.py) | Validates uploads, stores files, persists companies, and builds responses. |
-| [`src/models/companies.py`](src/models/companies.py) | SQLAlchemy base, enums, and `DoctorModel`. |
+| [`src/models/companies.py`](src/models/companies.py) | Defines Doctor profiles, monthly inputs, and generated `ideas` batches. |
 | [`src/schemas/companies.py`](src/schemas/companies.py) | Pydantic response model for Doctor creation. |
 | [`src/schemas/doctor_agent.py`](src/schemas/doctor_agent.py) | AI input and structured output models. |
 | [`src/database/companies.py`](src/database/companies.py) | Reads the Alembic database URL and creates the async SQLAlchemy session factory. |
@@ -185,13 +185,16 @@ The migration chain currently includes:
 - `09cfdb09463c` — expands `picture_path` to 1024 characters.
 - `c9e2f4a6b8d0` — moves monthly doctor offers and confusing matters into
   `monthly_ideas`, with one record per Doctor and month.
+- `b7c4d2e9f1a0` — adds `ideas` for generated ideas and matching post types.
 
 Monthly ideas are managed separately through
 `POST /api/v1/companies/monthly-ideas`. Each list accepts a maximum of 10
 items for the current month. Planning is started separately through
 `POST /api/v1/companies/start_planning` without a request body; that endpoint
 loads the authenticated Doctor profile and its current month's stored
-`monthly_ideas`, then returns generated `agent_output`.
+`monthly_ideas`, generates an `agent_output`, stores its ideas and post types as
+a new `ideas` row, then returns the generated output. Profile creation follows
+the same persistence flow.
 
 ## Running the API
 

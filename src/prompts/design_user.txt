@@ -1,0 +1,15 @@
+Create image-design prompts for this doctor’s social media content.
+
+<doctor_profile>
+Doctor name: {doctor_name}
+Specialization: {doctor_specialization}
+Requested language: {language}
+Target audiences: {audiences}
+</doctor_profile>
+
+<content_plan>
+Ideas: {ideas}
+Post types: {post_types}
+</content_plan>
+
+Return one detailed design prompt for each idea, preserving the original order.

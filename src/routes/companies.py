@@ -6,6 +6,7 @@ from pydantic import StringConstraints
 from src.controllers.companies import (
     create_or_update_company,
     create_or_update_monthly_ideas,
+    start_design_prompt_generation,
     start_planning,
 )
 from src.jwt.auth import CurrentUser
@@ -15,6 +16,7 @@ from src.schemas.companies import (
     MonthlyIdeasRequest,
     MonthlyIdeasResponse,
     StartPlanningResponse,
+    DesignPromptsResponse,
 )
 
 
@@ -98,3 +100,14 @@ async def start_planning_route(
     current_user: CurrentUser,
 ) -> StartPlanningResponse:
     return await start_planning(owner_id=current_user.id)
+
+
+@companies_router.post(
+    "/design-prompts",
+    response_model=DesignPromptsResponse,
+)
+async def start_design_prompt_generation_route(
+    current_user: CurrentUser,
+) -> DesignPromptsResponse:
+    result = await start_design_prompt_generation(owner_id=current_user.id)
+    return DesignPromptsResponse(design_prompts=result.design_prompts)

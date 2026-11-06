@@ -13,9 +13,10 @@ from src.models.companies import (
     DoctorLanguage,
     DoctorModel,
     DoctorSpecialization,
+    IdeasModel,
     MonthlyIdeasModel,
 )
-from src.schemas.doctor_agent import DoctorContext
+from src.schemas.doctor_agent import AgentOutput, DoctorContext
 from src.schemas.companies import (
     DoctorDataResponse,
     MonthlyIdeasResponse,
@@ -34,6 +35,18 @@ ALLOWED_EXTENSIONS = (".jpg", ".jpeg")
 JPEG_START = b"\xff\xd8\xff"
 JPEG_END = b"\xff\xd9"
 MAX_MONTHLY_IDEAS = 10
+
+
+async def _save_agent_output(company_id: UUID, agent_output: AgentOutput) -> None:
+    async with async_session_factory() as session:
+        session.add(
+            IdeasModel(
+                company_id=company_id,
+                ideas=agent_output.ideas,
+                post_types=agent_output.post_types,
+            )
+        )
+        await session.commit()
 
 
 async def _read_and_validate_picture(picture: UploadFile) -> bytes:
@@ -207,6 +220,7 @@ async def create_or_update_company(
             posts_per_week=saved_doctor.posts_per_week,
         )
         agent_output = await doctor_agent.start(doctor_context)
+        await _save_agent_output(saved_doctor.id, agent_output)
 
     except HTTPException:
         # Client errors: no stack trace in the logs. Clean up any new file.
@@ -217,7 +231,7 @@ async def create_or_update_company(
     except Exception:
         if database_committed:
             logger.exception(
-                "Doctor profile was saved, but generating agent output failed."
+                "Doctor profile was saved, but generating or saving agent output failed."
             )
         else:
             logger.exception("Failed to save doctor profile; removing new picture.")
@@ -371,6 +385,7 @@ async def start_planning(
         posts_per_week=doctor.posts_per_week,
     )
     agent_output = await doctor_agent.start(doctor_context)
+    await _save_agent_output(doctor.id, agent_output)
 
     return StartPlanningResponse(
         month_start=monthly_ideas.month_start,

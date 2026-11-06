@@ -118,6 +118,38 @@ class MonthlyIdeasModel(Base):
     )
 
 
+class IdeasModel(Base):
+    __tablename__ = "ideas"
+    __table_args__ = (
+        Index("ix_ideas_company_id", "company_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    ideas: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    post_types: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class UserModel(Base):
     __tablename__ = "users"
 

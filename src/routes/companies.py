@@ -7,6 +7,7 @@ from src.controllers.companies import (
     create_or_update_company,
     create_or_update_monthly_ideas,
     generate_next_design_image,
+    generate_captions,
     start_design_prompt_generation,
     start_planning,
 )
@@ -19,6 +20,7 @@ from src.schemas.companies import (
     StartPlanningResponse,
     DesignPromptsResponse,
     DesignImageResponse,
+    CaptionsResponse,
 )
 
 
@@ -113,6 +115,17 @@ async def start_design_prompt_generation_route(
 ) -> DesignPromptsResponse:
     result = await start_design_prompt_generation(owner_id=current_user.id)
     return DesignPromptsResponse(design_prompts=result.design_prompts)
+
+
+@companies_router.post(
+    "/captions",
+    response_model=CaptionsResponse,
+)
+async def generate_captions_route(
+    current_user: CurrentUser,
+) -> CaptionsResponse:
+    result = await generate_captions(owner_id=current_user.id)
+    return CaptionsResponse(captions=result.captions)
 
 
 @companies_router.post(

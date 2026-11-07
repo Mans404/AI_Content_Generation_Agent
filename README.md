@@ -206,6 +206,12 @@ Design prompts are generated separately through
 loads the latest saved ideas batch, invokes `DesignPromptAgent`, stores the
 result in that batch, and returns `design_prompts`. Each
 `design_prompts[i]` corresponds to the saved idea and post type at index `i`.
+The design image agent is called through
+`POST /api/v1/companies/design-images/next`. It takes the next prompt from the
+latest batch, generates one image through OpenRouter, stores it under
+`uploads/company_designs/`, and returns its local URL. Requests are serialized
+per ideas batch, so prompts are consumed in order and each prompt is used once.
+Configure the image model with `DESIGN_IMAGE_MODEL`.
 
 ## Running the API
 

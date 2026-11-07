@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, select
 from src.agents.doctor_agent import doctor_agent
 from src.agents.design_prompt_agent import design_prompt_agent
 from src.agents.design_image_agent import design_image_agent
+from src.agents.caption_llm import caption_llm
 from src.database.companies import async_session_factory
 from src.models.companies import (
     DoctorLanguage,
@@ -19,7 +20,12 @@ from src.models.companies import (
     DesignImageModel,
     MonthlyIdeasModel,
 )
-from src.schemas.doctor_agent import AgentOutput, DesignPromptOutput, DoctorContext
+from src.schemas.doctor_agent import (
+    AgentOutput,
+    CaptionOutput,
+    DesignPromptOutput,
+    DoctorContext,
+)
 from src.schemas.companies import (
     DoctorDataResponse,
     MonthlyIdeasResponse,
@@ -466,6 +472,67 @@ async def start_design_prompt_generation(
         await session.commit()
 
     return design_prompt_output
+
+
+async def generate_captions(owner_id: UUID) -> CaptionOutput:
+    async with async_session_factory() as session:
+        doctor = await session.scalar(
+            select(DoctorModel).where(DoctorModel.owner_id == owner_id)
+        )
+        if doctor is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Create a company profile before generating captions.",
+            )
+
+        ideas = await session.scalar(
+            select(IdeasModel)
+            .where(IdeasModel.company_id == doctor.id)
+            .order_by(IdeasModel.created_at.desc())
+        )
+        if ideas is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Generate content ideas before generating captions.",
+            )
+
+    agent_output = AgentOutput.model_validate(
+        {
+            "ideas": ideas.ideas,
+            "post_types": ideas.post_types,
+        },
+        context={"posts_per_week": doctor.posts_per_week},
+    )
+    doctor_context = DoctorContext(
+        doctor_id=doctor.id,
+        doctor_name=doctor.name,
+        doctor_specialization=doctor.doctor_specialization,
+        language=doctor.language,
+        picture_path=doctor.picture_path,
+        audiences=doctor.audiences,
+        types_of_medical_procedures=doctor.types_of_medical_procedures,
+        doctor_offers=[],
+        advice_and_matters_that_most_people_find_confusing=[],
+        strengths=doctor.strengths,
+        posts_per_week=doctor.posts_per_week,
+    )
+    caption_output = await caption_llm.start(
+        doctor_context,
+        agent_output.ideas,
+        agent_output.post_types,
+    )
+
+    async with async_session_factory() as session:
+        saved_ideas = await session.get(IdeasModel, ideas.id)
+        if saved_ideas is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="The content ideas batch no longer exists.",
+            )
+        saved_ideas.captions = caption_output.captions
+        await session.commit()
+
+    return caption_output
 
 
 async def generate_next_design_image(owner_id: UUID) -> DesignImageResponse:

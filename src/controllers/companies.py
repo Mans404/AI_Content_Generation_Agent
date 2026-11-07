@@ -5,16 +5,18 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 
 from src.agents.doctor_agent import doctor_agent
 from src.agents.design_prompt_agent import design_prompt_agent
+from src.agents.design_image_agent import design_image_agent
 from src.database.companies import async_session_factory
 from src.models.companies import (
     DoctorLanguage,
     DoctorModel,
     DoctorSpecialization,
     IdeasModel,
+    DesignImageModel,
     MonthlyIdeasModel,
 )
 from src.schemas.doctor_agent import AgentOutput, DesignPromptOutput, DoctorContext
@@ -22,6 +24,7 @@ from src.schemas.companies import (
     DoctorDataResponse,
     MonthlyIdeasResponse,
     StartPlanningResponse,
+    DesignImageResponse,
 )
 
 
@@ -29,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path("uploads/Doctor_designs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+COMPANY_DESIGN_DIR = Path("uploads/company_designs")
+COMPANY_DESIGN_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_PICTURE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg"}
@@ -454,7 +459,60 @@ async def start_design_prompt_generation(
         saved_ideas = await session.get(IdeasModel, ideas.id)
         if saved_ideas is None:
             raise RuntimeError(f"Ideas batch {ideas.id} could not be retrieved.")
+        await session.execute(
+            delete(DesignImageModel).where(DesignImageModel.ideas_id == saved_ideas.id)
+        )
         saved_ideas.design_prompts = design_prompt_output.design_prompts
         await session.commit()
 
     return design_prompt_output
+
+
+async def generate_next_design_image(owner_id: UUID) -> DesignImageResponse:
+    async with async_session_factory() as session:
+        doctor = await session.scalar(
+            select(DoctorModel).where(DoctorModel.owner_id == owner_id)
+        )
+        if doctor is None:
+            raise HTTPException(status_code=404, detail="Create a company profile first.")
+
+        ideas = await session.scalar(
+            select(IdeasModel)
+            .where(IdeasModel.company_id == doctor.id)
+            .order_by(IdeasModel.created_at.desc())
+            .with_for_update()
+        )
+        if ideas is None or not ideas.design_prompts:
+            raise HTTPException(
+                status_code=404,
+                detail="Generate design prompts before requesting design images.",
+            )
+
+        generated_count = await session.scalar(
+            select(func.count(DesignImageModel.id)).where(
+                DesignImageModel.ideas_id == ideas.id
+            )
+        )
+        prompt_index = int(generated_count or 0)
+        if prompt_index >= len(ideas.design_prompts):
+            raise HTTPException(status_code=404, detail="No more design images are available.")
+        prompt = ideas.design_prompts[prompt_index]
+        generated = await design_image_agent.generate(prompt)
+        filename = f"{uuid4()}.{generated.extension}"
+        file_path = COMPANY_DESIGN_DIR / filename
+        await asyncio.to_thread(file_path.write_bytes, generated.data)
+        session.add(
+            DesignImageModel(
+                company_id=doctor.id,
+                ideas_id=ideas.id,
+                prompt_index=prompt_index,
+                file_path=str(file_path),
+            )
+        )
+        await session.commit()
+
+    return DesignImageResponse(
+        image_url=f"/uploads/company_designs/{filename}",
+        prompt_index=prompt_index,
+        remaining_prompts=len(ideas.design_prompts) - prompt_index - 1,
+    )

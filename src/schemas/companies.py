@@ -37,3 +37,9 @@ class StartPlanningResponse(MonthlyIdeasResponse):
 
 class DesignPromptsResponse(BaseModel):
     design_prompts: list[str]
+
+
+class DesignImageResponse(BaseModel):
+    image_url: str
+    prompt_index: int
+    remaining_prompts: int

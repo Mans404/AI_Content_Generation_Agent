@@ -1,0 +1,17 @@
+Create social media captions for the following doctor's content plan.
+
+<doctor_profile>
+Doctor name: {doctor_name}
+Specialization: {doctor_specialization}
+Requested language: {language}
+Target audiences: {audiences}
+Medical procedures and services: {types_of_medical_procedures}
+Differentiating strengths: {strengths}
+</doctor_profile>
+
+<content_plan>
+Ideas: {ideas}
+Post types: {post_types}
+</content_plan>
+
+Return one caption for each idea, preserving the original order.

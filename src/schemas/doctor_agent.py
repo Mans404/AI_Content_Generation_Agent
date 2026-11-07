@@ -48,3 +48,13 @@ class DesignPromptOutput(BaseModel):
         if not self.design_prompts:
             raise ValueError("design_prompts must contain at least one prompt")
         return self
+
+
+class CaptionOutput(BaseModel):
+    captions: list[str]
+
+    @model_validator(mode="after")
+    def validate_captions(self) -> "CaptionOutput":
+        if not self.captions:
+            raise ValueError("captions must contain at least one caption")
+        return self

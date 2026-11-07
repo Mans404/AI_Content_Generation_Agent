@@ -39,6 +39,10 @@ class DesignPromptsResponse(BaseModel):
     design_prompts: list[str]
 
 
+class CaptionsResponse(BaseModel):
+    captions: list[str]
+
+
 class DesignImageResponse(BaseModel):
     image_url: str
     prompt_index: int

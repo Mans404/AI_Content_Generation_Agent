@@ -28,8 +28,9 @@ content ideas.
 
 ### Not yet connected
 
-- Generated ideas and post types are persisted as generated batches in the
-  `ideas` table and returned by the creation and planning endpoints.
+- Generated ideas, post types, design prompts, and captions are persisted as
+  generated batches in the `ideas` table. Captions are generated and returned
+  by `POST /api/v1/companies/captions`.
 - There are no automated tests or CI workflows in the repository yet.
 - JWT authentication and ownership checks protect Doctor creation.
 - There is no image processing pipeline.
@@ -70,6 +71,7 @@ Doctor controller
   |-- creates DoctorContext from the retrieved row
   |-- invokes DoctorAgent -> structured AgentOutput -> persists ideas and post types
   |-- POST /design-prompts invokes DesignPromptAgent -> persists design prompts
+  |-- POST /captions invokes CaptionLLM and stores captions on the latest ideas batch
   |
   v
 DoctorDataResponse + AgentOutput
@@ -92,6 +94,7 @@ AI layer
 | [`src/database/companies.py`](src/database/companies.py) | Reads the Alembic database URL and creates the async SQLAlchemy session factory. |
 | [`src/agents/doctor_agent.py`](src/agents/doctor_agent.py) | Configures the LangChain agent and OpenRouter chat model. |
 | [`src/agents/design_prompt_agent.py`](src/agents/design_prompt_agent.py) | Converts generated ideas into image-design prompts for a separate design LLM. |
+| [`src/agents/caption_llm.py`](src/agents/caption_llm.py) | Creates one social media caption for each stored idea using the Doctor profile. |
 | [`src/prompt_loader.py`](src/prompt_loader.py) | Loads and formats prompt files. |
 | [`src/prompts/`](src/prompts/) | System and user prompts for social media strategy generation. |
 | [`src/models/alembic/`](src/models/alembic/) | Alembic environment and schema migrations. |
@@ -191,6 +194,7 @@ The migration chain currently includes:
   `monthly_ideas`, with one record per Doctor and month.
 - `b7c4d2e9f1a0` — adds `ideas` for generated ideas and matching post types.
 - `d8e5f3a1b7c9` — adds design prompts to generated idea batches.
+- `f2a4c6e8b0d1` — adds captions to generated idea batches.
 
 Monthly ideas are managed separately through
 `POST /api/v1/companies/monthly-ideas`. Each list accepts a maximum of 10

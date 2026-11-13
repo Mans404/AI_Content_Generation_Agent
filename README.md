@@ -4,9 +4,8 @@ An early-stage FastAPI service for creating Doctor content profiles and preparin
 them for AI-generated social media strategies.
 
 The project currently accepts a Doctor's basic information and visual reference
-design, stores one profile per authenticated user in PostgreSQL, retrieves the
-committed profile, and passes it to a LangChain agent that generates structured
-content ideas.
+design and stores one profile per authenticated user in PostgreSQL. Content
+ideas are generated separately when planning is started.
 
 ## Current status
 
@@ -23,7 +22,10 @@ content ideas.
 - Pydantic response validation.
 - LangChain/OpenRouter agent definitions with structured output models.
 - A design-prompt agent that converts each generated idea into a prompt for a
-  separate design language model.
+  separate design language model. Each post is planned as one standalone static image;
+  video, carousel, and presentation formats are excluded.
+- The first planning agent researches current content trends and upcoming occasions in
+  the current month through Tavily before generating ideas.
 - Prompt files separated from Python code.
 
 ### Not yet connected
@@ -68,13 +70,12 @@ Doctor controller
   |-- validates and saves JPG -> uploads/Doctor_designs/
   |-- persists DoctorModel -> PostgreSQL
   |-- retrieves DoctorModel from PostgreSQL
-  |-- creates DoctorContext from the retrieved row
-  |-- invokes DoctorAgent -> structured AgentOutput -> persists ideas and post types
+  |-- POST /start_planning invokes DoctorAgent -> persists ideas and post types
   |-- POST /design-prompts invokes DesignPromptAgent -> persists design prompts
   |-- POST /captions invokes CaptionLLM and stores captions on the latest ideas batch
   |
   v
-DoctorDataResponse + AgentOutput
+DoctorDataResponse
 
 AI layer
   PromptLoader -> prompts/system.txt + prompts/user.txt
@@ -136,10 +137,16 @@ sqlalchemy.url = postgresql://USER:PASSWORD@HOST:5432/DATABASE
 For PostgreSQL, the application converts a `postgresql://` URL to the async
 `postgresql+psycopg://` dialect automatically.
 
-When enabling the agent, provide the OpenRouter key through the environment:
+When enabling the planning agent, provide the OpenRouter key through the environment:
 
 ```powershell
 $env:OPENROUTER_API_KEY = "your-key"
+```
+
+The planning agent also requires a Tavily API key for trend and occasion research:
+
+```powershell
+$env:TAVILY_API_KEY = "your-tavily-key"
 ```
 
 The API requires a high-entropy JWT signing key:

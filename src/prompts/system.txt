@@ -23,3 +23,10 @@ Follow these rules:
 
 The response must conform to the structured response schema supplied by the application:
 `ideas` (list of strings), `post_types` (list of strings).
+- Write each idea so it can be turned into a single image built around three to five
+  short key points (or one clear explanatory concept). State the topic or hook and,
+  where relevant, list the key points or the myth/fact pair the image should convey.
+- Do not describe scenes with the doctor, patients, or clinic staff (for example,
+  "the doctor explains" or "a patient at the clinic"). Phrase ideas as topics, tips,
+  or points that can be shown with icons and simple explanatory illustrations.
+- Do not depend on the doctor's name, photo, or personal presence in the idea.

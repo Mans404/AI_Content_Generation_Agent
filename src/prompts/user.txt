@@ -17,10 +17,14 @@ Planning requirements:
    ethical promotional content. Do not force categories that do not fit the profile.
 2. Address the target audiences and confusing topics in plain, approachable language.
 3. Use the doctor's procedures, offers, and strengths only when they are relevant.
-4. For each idea, provide a short, descriptive post type such as educational carousel,
-   short video, FAQ, myth versus fact, checklist, patient journey, or announcement.
+4. For each idea, provide a short, descriptive static-image post type such as
+   educational tip, advice, FAQ, myth versus fact, checklist, quote, or announcement.
+   Do not return video, carousel, slideshow, presentation, reel, story, or any other
+   multi-image or motion format.
 5. Make the ideas suitable for social media, specific enough for a content creator to
-   develop, and safe for general health education.
+   develop as one standalone image built from short key points and simple illustrations,
+   and safe for general health education. Do not make an idea depend on showing the
+   doctor, patients, or clinic scenes.
 
 Return the result through the application's structured response fields:
 - `ideas`: the post ideas, in publishing order

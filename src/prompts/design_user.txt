@@ -1,4 +1,4 @@
-Create image-design prompts for this doctor’s social media content.
+Create image-design prompts for this doctor's social media content.
 
 <doctor_profile>
 Doctor name: {doctor_name}
@@ -13,3 +13,21 @@ Post types: {post_types}
 </content_plan>
 
 Return one detailed design prompt for each idea, preserving the original order.
+Each returned prompt must describe exactly one standalone static image. Do not use
+carousel, video, presentation, slideshow, reel, story, or multi-image layouts.
+
+Build each design around the key points of its idea, shown as a clean arrangement of
+three to five points (or one clear focal illustration), each paired with a simple icon
+or small explanatory illustration relevant to the supplied specialization. Match the
+layout to the post type (for example: a checklist as numbered items, myth versus fact as
+two clearly labeled sides within the same single image, an FAQ as one question with a
+short answer area, a quote as a text-led layout with a small supporting illustration).
+People may appear only as simple, stylized explanatory illustrations when they clarify a
+point; never depict doctors, nurses, or realistic people.
+
+Keep every design simple, creative, and clearly connected to the supplied medical
+specialization. Use one consistent illustration style, a cohesive color palette, and
+ample whitespace. Write any on-image text placeholders (such as "[headline]" and
+"[point 1]") and leave space for text in the requested language, and use right-to-left
+layout guidance if that language is RTL. Avoid duplicated objects, impossible
+instruments, cluttered compositions, and unreadable text.

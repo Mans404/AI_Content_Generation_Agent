@@ -16,7 +16,6 @@ class DoctorDataResponse(BaseModel):
     types_of_medical_procedures: list[str]
     strengths: list[str]
     posts_per_week: int
-    agent_output: AgentOutput
 
 
 class MonthlyIdeasRequest(BaseModel):

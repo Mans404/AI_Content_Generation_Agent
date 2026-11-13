@@ -234,8 +234,8 @@ async def create_or_update_company(
             strengths=saved_doctor.strengths,
             posts_per_week=saved_doctor.posts_per_week,
         )
-        agent_output = await doctor_agent.start(doctor_context)
-        await _save_agent_output(saved_doctor.id, agent_output)
+        # agent_output = await doctor_agent.start(doctor_context)
+        # await _save_agent_output(saved_doctor.id, agent_output)
 
     except HTTPException:
         # Client errors: no stack trace in the logs. Clean up any new file.
@@ -269,7 +269,6 @@ async def create_or_update_company(
             types_of_medical_procedures=saved_doctor.types_of_medical_procedures,
             strengths=saved_doctor.strengths,
             posts_per_week=saved_doctor.posts_per_week,
-            agent_output=agent_output,
         ),
         created,
     )

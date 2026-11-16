@@ -4,7 +4,7 @@ import dotenv
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableConfig
-from pydantic import create_model, conlist
+from pydantic import create_model
 
 from src.schemas.doctor_agent import AgentOutput, DoctorContext
 from src.prompt_loader import PromptLoader
@@ -25,15 +25,11 @@ model = init_chat_model(
 class DoctorAgent:
 
     async def start(self, Doctor: DoctorContext) -> AgentOutput:
-        expected_count = Doctor.posts_per_week * 4
         output_schema = create_model(
             "AgentOutputForRequestedPostCount",
             __base__=AgentOutput,
-            ideas=(conlist(str, min_length=expected_count, max_length=expected_count), ...),
-            post_types=(
-                conlist(str, min_length=expected_count, max_length=expected_count),
-                ...,
-            ),
+            ideas=(list[str], ...),
+            post_types=(list[str], ...),
         )
         agent = create_agent(
             model=model,
@@ -53,6 +49,7 @@ class DoctorAgent:
             ),
             strengths=Doctor.strengths,
             posts_per_week=Doctor.posts_per_week,
+            upcoming_occasions=Doctor.upcoming_occasions,
         )
 
         config: RunnableConfig = {

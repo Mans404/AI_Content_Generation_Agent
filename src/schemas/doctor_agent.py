@@ -17,6 +17,7 @@ class DoctorContext(BaseModel):
     advice_and_matters_that_most_people_find_confusing: list[str]
     strengths: list[str]
     posts_per_week: int = Field(..., ge=1, le=21)
+    upcoming_occasions: list[str] = Field(default_factory=list)
 
 
 class AgentOutput(BaseModel):

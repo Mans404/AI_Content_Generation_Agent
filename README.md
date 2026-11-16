@@ -24,8 +24,8 @@ ideas are generated separately when planning is started.
 - A design-prompt agent that converts each generated idea into a prompt for a
   separate design language model. Each post is planned as one standalone static image;
   video, carousel, and presentation formats are excluded.
-- The first planning agent researches current content trends and upcoming occasions in
-  the current month through Tavily before generating ideas.
+- The first planning agent researches current content trends through Tavily and receives
+  future Egyptian occasions from the `holidays` library before generating ideas.
 - Prompt files separated from Python code.
 
 ### Not yet connected

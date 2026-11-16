@@ -43,6 +43,7 @@ dependencies = [
     "types-python-jose>=3.5.0.20260408",
     "pyjwt>=2.15.1",
     "pwdlib[argon2]>=0.3.1",
+    "holidays>=0.108",
 ]
 
 [build-system]

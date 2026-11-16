@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.models.companies import DoctorModel, MonthlyIdeasModel
 from src.schemas.doctor_agent import DoctorContext
+from src.services.occasions import future_egypt_occasions
 
 logger = logging.getLogger(__name__)
 
@@ -39,4 +40,5 @@ def build_doctor_context(
         ),
         strengths=doctor.strengths,
         posts_per_week=doctor.posts_per_week,
+        upcoming_occasions=future_egypt_occasions(),
     )

@@ -10,6 +10,8 @@ Current offers: {doctor_offers}
 Topics patients find confusing: {advice_and_matters_that_most_people_find_confusing}
 Differentiating strengths: {strengths}
 Requested posts per week: {posts_per_week}
+Future occasions in Egypt:
+{upcoming_occasions}
 </doctor_profile>
 
 Planning requirements:
@@ -25,6 +27,8 @@ Planning requirements:
    develop as one standalone image built from short key points and simple illustrations,
    and safe for general health education. Do not make an idea depend on showing the
    doctor, patients, or clinic scenes.
+6. Use the future Egyptian occasions when they are relevant to the doctor's specialty
+   and audience. Do not use occasions that have already passed.
 
 Return the result through the application's structured response fields:
 - `ideas`: the post ideas, in publishing order

@@ -182,6 +182,28 @@ class DesignImageModel(Base):
     )
 
 
+class DesignImageGenerationModel(Base):
+    __tablename__ = "design_image_generations"
+    __table_args__ = (
+        UniqueConstraint("ideas_id", "prompt_index"),
+        Index("ix_design_image_generations_company_id", "company_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    ideas_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False
+    )
+    prompt_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    stored: Mapped[bool] = mapped_column(nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class UserModel(Base):
     __tablename__ = "users"
 

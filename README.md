@@ -24,6 +24,10 @@ ideas are generated separately when planning is started.
 - A design-prompt agent that converts each generated idea into a prompt for a
   separate design language model. Each post is planned as one standalone static image;
   video, carousel, and presentation formats are excluded.
+- Human review is supported after the first design-prompt draft through
+  `POST /api/v1/companies/design-prompts/feedback`; submitted feedback and the
+  current prompts are sent back to the design-prompt agent before revised prompts
+  are persisted.
 - The first planning agent researches current content trends through Tavily and receives
   future Egyptian occasions from the `holidays` library before generating ideas.
 - Prompt files separated from Python code.
@@ -71,7 +75,9 @@ Doctor controller
   |-- persists DoctorModel -> PostgreSQL
   |-- retrieves DoctorModel from PostgreSQL
   |-- POST /start_planning invokes DoctorAgent -> persists ideas and post types
-  |-- POST /design-prompts invokes DesignPromptAgent -> persists design prompts
+  |-- POST /design-prompts invokes DesignPromptAgent -> returns a draft and persists prompts
+  |-- POST /design-prompts/feedback sends human feedback and current prompts to DesignPromptAgent
+      -> replaces prompts and invalidates prior generated design images
   |-- POST /captions invokes CaptionLLM and stores captions on the latest ideas batch
   |
   v
@@ -231,6 +237,11 @@ Design prompts are generated separately through
 loads the latest saved ideas batch, invokes `DesignPromptAgent`, stores the
 result in that batch, and returns `design_prompts`. Each
 `design_prompts[i]` corresponds to the saved idea and post type at index `i`.
+After reviewing the draft, submit human feedback as
+`{"feedback":"..."}` to
+`POST /api/v1/companies/design-prompts/feedback`. The service sends the current
+prompts and feedback back to `DesignPromptAgent`, replaces the prompts with its
+revision, and invalidates previously generated design-image records for that batch.
 The design image agent is called through
 `POST /api/v1/companies/design-images/generate`. It takes the next prompt from the
 latest batch, generates one image through OpenRouter, stages it in the public

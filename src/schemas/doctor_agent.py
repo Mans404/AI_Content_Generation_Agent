@@ -25,17 +25,23 @@ class AgentOutput(BaseModel):
 
     @model_validator(mode="after")
     def validate_post_counts(self, info: ValidationInfo) -> "AgentOutput":
-        if len(self.ideas) != len(self.post_types):
-            raise ValueError("ideas and post_types must have the same length")
-
         posts_per_week = info.context.get("posts_per_week") if info.context else None
+
         if posts_per_week is not None:
             expected_count = posts_per_week * 4
-            if len(self.ideas) != expected_count:
+
+            
+            self.ideas = self.ideas[:expected_count]
+            self.post_types = self.post_types[:expected_count]
+
+            if len(self.ideas) < expected_count or len(self.post_types) < expected_count:
                 raise ValueError(
                     "ideas and post_types must each contain "
                     f"{expected_count} items for {posts_per_week} posts per week"
                 )
+
+        if len(self.ideas) != len(self.post_types):
+            raise ValueError("ideas and post_types must have the same length")
 
         return self
 

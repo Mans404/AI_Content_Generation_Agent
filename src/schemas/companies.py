@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -43,6 +44,13 @@ class CaptionsResponse(BaseModel):
 
 
 class DesignImageResponse(BaseModel):
+    image_url: str
+    prompt_index: int
+    remaining_prompts: int
+
+
+class DesignImageGenerationResponse(BaseModel):
+    generation_id: UUID
     image_url: str
     prompt_index: int
     remaining_prompts: int

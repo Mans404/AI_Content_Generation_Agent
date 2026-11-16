@@ -67,7 +67,7 @@ FastAPI route: POST /api/v1/companies/
   |
   v
 Doctor controller
-  |-- validates and saves JPG -> uploads/Doctor_designs/
+  |-- validates and saves JPG -> Supabase Storage/doctor-images
   |-- persists DoctorModel -> PostgreSQL
   |-- retrieves DoctorModel from PostgreSQL
   |-- POST /start_planning invokes DoctorAgent -> persists ideas and post types
@@ -87,8 +87,8 @@ AI layer
 | Path | Responsibility |
 | --- | --- |
 | [`src/main.py`](src/main.py) | Creates the FastAPI app and registers routers. |
-| [`src/routes/companies.py`](src/routes/companies.py) | Defines the Doctor API route and form fields. |
-| [`src/controllers/companies.py`](src/controllers/companies.py) | Validates uploads, stores files, persists companies, and builds responses. |
+| [`src/routes/`](src/routes/) | Defines focused profile, content, and image route modules assembled by `companies.py`. |
+| [`src/controllers/`](src/controllers/) | Coordinates profile persistence, monthly planning, AI content generation, and design-image generation through focused controller modules. `companies.py` remains a compatibility export module. |
 | [`src/models/companies.py`](src/models/companies.py) | Defines Doctor profiles, monthly inputs, and generated `ideas` batches. |
 | [`src/schemas/companies.py`](src/schemas/companies.py) | Pydantic response model for Doctor creation. |
 | [`src/schemas/doctor_agent.py`](src/schemas/doctor_agent.py) | AI input and structured output models. |
@@ -156,6 +156,18 @@ $env:JWT_SECRET_KEY = "a-random-secret-at-least-32-characters-long"
 $env:JWT_ISSUER = "content-generation-api"
 ```
 
+Image uploads require Supabase Storage credentials:
+
+```powershell
+$env:SUPABASE_URL = "https://your-project.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY = "your-server-side-service-role-key"
+```
+
+Create two public Storage buckets named `doctor-images` and `design-images`.
+The service uploads new doctor reference images and generated design images to
+these buckets and stores their public URLs in PostgreSQL. The service-role key
+must only be used by the backend and must not be exposed to clients.
+
 Register or log in to receive a bearer token. Include it when creating a
 Doctor profile:
 
@@ -201,7 +213,9 @@ The migration chain currently includes:
   `monthly_ideas`, with one record per Doctor and month.
 - `b7c4d2e9f1a0` — adds `ideas` for generated ideas and matching post types.
 - `d8e5f3a1b7c9` — adds design prompts to generated idea batches.
+- `e1f2a3b4c5d6` — adds stored generated design images.
 - `f2a4c6e8b0d1` — adds captions to generated idea batches.
+- `a7b8c9d0e1f2` — tracks generated design images before final storage.
 
 Monthly ideas are managed separately through
 `POST /api/v1/companies/monthly-ideas`. Each list accepts a maximum of 10
@@ -218,10 +232,13 @@ loads the latest saved ideas batch, invokes `DesignPromptAgent`, stores the
 result in that batch, and returns `design_prompts`. Each
 `design_prompts[i]` corresponds to the saved idea and post type at index `i`.
 The design image agent is called through
-`POST /api/v1/companies/design-images/next`. It takes the next prompt from the
-latest batch, generates one image through OpenRouter, stores it under
-`uploads/company_designs/`, and returns its local URL. Requests are serialized
-per ideas batch, so prompts are consumed in order and each prompt is used once.
+`POST /api/v1/companies/design-images/generate`. It takes the next prompt from the
+latest batch, generates one image through OpenRouter, stages it in the public
+Supabase `design-images` bucket, and returns a generation ID and temporary public
+URL. Call `POST /api/v1/companies/design-images/{generation_id}/store` to move
+that exact generated image to its final location and record it in PostgreSQL.
+Requests are serialized per ideas batch, and pending generation IDs are reused,
+so retrying either request does not call the paid image model again.
 Configure the image model with `DESIGN_IMAGE_MODEL`.
 
 ## Running the API
@@ -309,8 +326,9 @@ persisting and exposing the generated output.
 
 ## Development notes
 
-- Uploaded files are stored under `uploads/Doctor_designs/` using UUID filenames.
-- The upload directory is created automatically when the controller module loads.
+- New doctor reference images are stored in Supabase's `doctor-images` bucket
+  using UUID filenames. Existing local files remain available through the
+  legacy `/uploads` mount.
 - The current database session factory uses SQLAlchemy's async engine and
   `psycopg`.
 - The project uses `language` and `DoctorTone` enums shared by the

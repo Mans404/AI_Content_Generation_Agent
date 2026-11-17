@@ -54,3 +54,25 @@ class DesignImageGenerationResponse(BaseModel):
     image_url: str
     prompt_index: int
     remaining_prompts: int
+
+
+class DesignImageBatchGenerationResponse(BaseModel):
+    generations: list[DesignImageGenerationResponse]
+
+
+class DesignImageRegenerateRequest(BaseModel):
+    feedback: str | None = Field(default=None, max_length=1000)
+
+
+class DesignImageStatusResponse(BaseModel):
+    generation_id: UUID
+    image_url: str
+    prompt_index: int
+    prompt: str
+    stored: bool  # False = waiting for user review, True = approved
+
+
+class DesignImageListResponse(BaseModel):
+    total: int
+    items: list[DesignImageStatusResponse]
+    missing_indexes: list[int]  # designs not generated yet or that failed

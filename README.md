@@ -1,9 +1,10 @@
 # AI Content Generation Workflow
 
 FastAPI service for creating an authenticated Doctor profile and generating a
-monthly social-media content plan. The service can generate content ideas,
-design prompts, captions, and images through OpenRouter, then stores profile
-and generated-content data in PostgreSQL and Supabase Storage.
+monthly social-media content plan. The service generates content ideas, design
+prompts, captions, and images through OpenRouter, then stores profile and
+generated-content data in PostgreSQL and Supabase Storage. Generated images go
+through a human review step before they are stored permanently.
 
 ## Features
 
@@ -13,9 +14,12 @@ and generated-content data in PostgreSQL and Supabase Storage.
 - Monthly Doctor offers and confusing matters as inputs to the planning agent.
 - Structured content ideas and post types based on the requested posts per week.
 - Design prompts and captions generated from the latest ideas batch.
-- Concurrent generation of all missing design images.
-- Human review flow for regenerating an image with optional feedback and approving
-  an image for permanent storage.
+- Batch image generation: all missing designs are generated in parallel (bounded
+  concurrency), and a single failure never discards the successful images.
+- Human-in-the-loop review: list the current state of every design, approve
+  (store) designs, or regenerate individual designs with optional feedback.
+- Retry-safe generation: calling the batch endpoint again only generates the
+  missing designs and never re-bills images that already exist.
 - Async SQLAlchemy sessions with Alembic migrations.
 
 ## Architecture
@@ -30,7 +34,7 @@ FastAPI
   |-- /api/v1/companies/start_planning -> ideas and post types
   |-- /api/v1/companies/design-prompts -> image prompts
   |-- /api/v1/companies/captions -> captions
-  |-- /api/v1/companies/design-images/* -> image generation and approval
+  |-- /api/v1/companies/design-images/* -> image generation, review, approval
   |
   |-- PostgreSQL (profiles, users, monthly inputs, ideas, images)
   |-- Supabase Storage (Doctor pictures and generated images)
@@ -94,8 +98,8 @@ The application reads these environment variables:
 | `SUPABASE_URL` | Yes for uploads | Supabase project URL. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes for uploads | Server-side Supabase Storage key. |
 | `DESIGN_IMAGE_MODEL` | No | Image model; defaults to `google/gemini-2.5-flash-image`. |
-| `DESIGN_IMAGE_MODALITIES` | No | Image response modalities; defaults to `image,text`. |
-| `DESIGN_IMAGE_CONCURRENCY` | No | Maximum concurrent image requests; defaults to `3`. |
+| `DESIGN_IMAGE_MODALITIES` | No | Image response modalities; defaults to `image,text`. Use `image` for image-only models (FLUX, Recraft, ...). |
+| `DESIGN_IMAGE_CONCURRENCY` | No | Maximum concurrent image requests; defaults to `3`. Tune to your OpenRouter rate limits. |
 
 The database URL is currently read from
 [`src/models/alembic.ini`](src/models/alembic.ini):
@@ -247,18 +251,72 @@ images.
 
 ### 5. Generate, review, and store design images
 
-Generate all missing images concurrently:
+Image generation follows a human-in-the-loop flow:
+
+```text
+GET  /design-images                      <- current state + missing_indexes
+  |
+  v  (if missing_indexes is not empty)
+POST /design-images/generate-all         <- generates only the missing designs
+  |
+  v
+User reviews all designs
+  |-- approve -> POST /design-images/{generation_id}/store       (stored = true)
+  `-- reject  -> POST /design-images/{generation_id}/regenerate  (+ optional feedback)
+                    `-> back to review
+  |
+  v
+Every item has stored = true -> continue to the next step
+```
+
+#### List the current state
+
+```http
+GET /api/v1/companies/design-images
+```
+
+Use it when the page loads or refreshes. It returns every generated design with
+its review state and the indexes that have not been generated yet.
+
+```json
+{
+  "total": 12,
+  "items": [
+    {
+      "generation_id": "6f1c...",
+      "image_url": "https://.../pending/6f1c....png",
+      "prompt_index": 0,
+      "prompt": "A clean minimal poster about ...",
+      "stored": false
+    }
+  ],
+  "missing_indexes": [3, 7]
+}
+```
+
+`stored: false` means the design is waiting for review; `stored: true` means it
+was approved.
+
+#### Generate all missing images
 
 ```http
 POST /api/v1/companies/design-images/generate-all
 ```
 
-The response contains a `generation_id`, temporary public `image_url`,
-`prompt_index`, and `remaining_prompts` for each successful image. Generation
-is retry-safe: existing prompt indexes are returned instead of calling the
-paid image model again.
+Generates every design that does not exist yet, in parallel and bounded by
+`DESIGN_IMAGE_CONCURRENCY`. The response contains a `generation_id`, a temporary
+public `image_url`, `prompt_index`, and `remaining_prompts` for each available
+image.
 
-Regenerate one unapproved image, optionally with feedback:
+- **Retry-safe:** existing prompt indexes are returned as they are; the paid
+  image model is only called for missing ones.
+- **Partial failures:** if some images fail, the successful ones are saved and
+  returned. Compare `len(generations)` with the number of prompts (or call
+  `GET /design-images` and read `missing_indexes`) and call the endpoint again to
+  complete the rest.
+- Returns `502` only if no image could be generated at all.
+
+#### Regenerate one image
 
 ```http
 POST /api/v1/companies/design-images/{generation_id}/regenerate
@@ -271,14 +329,33 @@ Content-Type: application/json
 }
 ```
 
-Approve and move one generated image to its final storage path:
+The body is optional. The feedback (max 1000 characters) is appended to the
+original prompt for this generation only; the prompt stored in the ideas batch is
+not modified. The previous image file is deleted after the new one is saved.
+
+Returns `409` if the design was already approved.
+
+#### Approve (store) one image
 
 ```http
 POST /api/v1/companies/design-images/{generation_id}/store
 ```
 
+Moves the image from `pending/` to its final storage path and creates the
+permanent design record. The call is idempotent: approving an already-approved
+design returns the stored image again. If the database write fails after the
+file was moved, the file is moved back.
+
 Approved images cannot be regenerated. Storage operations use the public
 Supabase `doctor-designs` bucket for both profile and generated images.
+
+#### Status codes
+
+| Code | Meaning |
+| --- | --- |
+| `404` | No company profile, no design prompts yet, or the generation was not found. |
+| `409` | Trying to regenerate an image that is already approved. |
+| `502` | The image model failed for every requested design. |
 
 ## Development notes
 
@@ -286,10 +363,26 @@ Supabase `doctor-designs` bucket for both profile and generated images.
   legacy files; new uploads use Supabase Storage.
 - The database uses async SQLAlchemy with `psycopg`.
 - The planning, design-prompt, and caption agents use structured Pydantic output.
-- Design image generation is bounded by `DESIGN_IMAGE_CONCURRENCY`, and individual
-  failures do not discard successful images.
+- No database lock is held while images are being generated; sessions are only
+  opened for short reads and writes.
+- All generated images of one request are saved in a single commit.
+- `design_image_generations` and `design_images` both have a unique constraint on
+  `(ideas_id, prompt_index)`. This is the real protection against duplicate
+  images when several workers run; the in-process `asyncio.Lock` only covers a
+  single process.
 - There are currently no automated tests or CI workflows; use the Swagger UI or
   `curl.exe` for manual API verification.
+
+## Known limitations / roadmap
+
+- `generate-all` runs inside the request. For a large number of designs it may hit
+  the gateway timeout; moving it to a background task that returns `202` plus a
+  progress endpoint is the planned improvement.
+- Images that were generated but never approved remain in the `pending/` folder
+  of the bucket. A periodic cleanup job or a storage lifecycle rule is
+  recommended.
+- Regeneration currently accepts free-text feedback only; editing the design
+  prompt itself is not supported yet.
 
 ## License
 

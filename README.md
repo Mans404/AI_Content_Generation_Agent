@@ -1,4 +1,4 @@
-# AI Content Generation Agent
+# AI Content Generation Workflow
 
 FastAPI service for creating an authenticated Doctor profile and generating a
 monthly social-media content plan. The service can generate content ideas,

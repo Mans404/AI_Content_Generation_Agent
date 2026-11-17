@@ -12,15 +12,7 @@ Ideas: {ideas}
 Post types: {post_types}
 </content_plan>
 
-<human_review>
-Existing design prompts: {existing_design_prompts}
-Human feedback: {human_feedback}
-</human_review>
-
 Return one detailed design prompt for each idea, preserving the original order.
-When existing design prompts are provided, revise them according to the human
-feedback while preserving the original idea order and improving only what the
-feedback requests.
 Each returned prompt must describe exactly one standalone static image. Do not use
 carousel, video, presentation, slideshow, reel, story, or multi-image layouts.
 

@@ -11,15 +11,11 @@ from src.controllers.common import build_doctor_context
 from src.database.companies import async_session_factory
 from src.models.companies import (
     DesignImageModel,
-    DesignImageGenerationModel,
     DoctorModel,
     IdeasModel,
     MonthlyIdeasModel,
 )
-from src.schemas.companies import (
-    DesignPromptFeedbackRequest,
-    StartPlanningResponse,
-)
+from src.schemas.companies import StartPlanningResponse
 from src.schemas.doctor_agent import AgentOutput, CaptionOutput, DesignPromptOutput
 async def _save_agent_output(
     company_id: UUID,
@@ -134,69 +130,6 @@ async def start_design_prompt_generation(
             raise RuntimeError(f"Ideas batch {ideas.id} could not be retrieved.")
         await session.execute(
             delete(DesignImageModel).where(DesignImageModel.ideas_id == saved_ideas.id)
-        )
-        await session.execute(
-            delete(DesignImageGenerationModel).where(
-                DesignImageGenerationModel.ideas_id == saved_ideas.id
-            )
-        )
-        saved_ideas.design_prompts = design_prompt_output.design_prompts
-        await session.commit()
-
-    return design_prompt_output
-
-
-async def revise_design_prompts(
-    owner_id: UUID,
-    feedback: DesignPromptFeedbackRequest,
-) -> DesignPromptOutput:
-    async with async_session_factory() as session:
-        doctor = await session.scalar(
-            select(DoctorModel).where(DoctorModel.owner_id == owner_id)
-        )
-        if doctor is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Create a company profile before revising design prompts.",
-            )
-
-        ideas = await session.scalar(
-            select(IdeasModel)
-            .where(IdeasModel.company_id == doctor.id)
-            .order_by(IdeasModel.created_at.desc())
-        )
-        if ideas is None or not ideas.design_prompts:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Generate design prompts before submitting feedback.",
-            )
-
-    doctor_context = build_doctor_context(doctor)
-    agent_output = AgentOutput.model_validate(
-        {
-            "ideas": ideas.ideas,
-            "post_types": ideas.post_types,
-        },
-        context={"posts_per_week": doctor.posts_per_week},
-    )
-    design_prompt_output = await design_prompt_agent.start(
-        doctor_context,
-        agent_output,
-        existing_design_prompts=ideas.design_prompts,
-        human_feedback=feedback.feedback,
-    )
-
-    async with async_session_factory() as session:
-        saved_ideas = await session.get(IdeasModel, ideas.id)
-        if saved_ideas is None:
-            raise RuntimeError(f"Ideas batch {ideas.id} could not be retrieved.")
-        await session.execute(
-            delete(DesignImageModel).where(DesignImageModel.ideas_id == saved_ideas.id)
-        )
-        await session.execute(
-            delete(DesignImageGenerationModel).where(
-                DesignImageGenerationModel.ideas_id == saved_ideas.id
-            )
         )
         saved_ideas.design_prompts = design_prompt_output.design_prompts
         await session.commit()

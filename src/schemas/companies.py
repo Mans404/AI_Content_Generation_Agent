@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from src.models.companies import DoctorLanguage, DoctorSpecialization
 from src.schemas.doctor_agent import AgentOutput
@@ -37,17 +37,6 @@ class StartPlanningResponse(MonthlyIdeasResponse):
 
 class DesignPromptsResponse(BaseModel):
     design_prompts: list[str]
-
-
-class DesignPromptFeedbackRequest(BaseModel):
-    feedback: str = Field(min_length=1, max_length=5000)
-
-    @field_validator("feedback")
-    @classmethod
-    def validate_feedback(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("feedback must contain non-whitespace characters")
-        return value
 
 
 class CaptionsResponse(BaseModel):

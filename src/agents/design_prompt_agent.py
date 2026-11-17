@@ -29,8 +29,6 @@ class DesignPromptAgent:
         self,
         doctor: DoctorContext,
         agent_output: AgentOutput,
-        existing_design_prompts: list[str] | None = None,
-        human_feedback: str | None = None,
     ) -> DesignPromptOutput:
         agent = create_agent(
             model=model,
@@ -44,8 +42,6 @@ class DesignPromptAgent:
             audiences=doctor.audiences,
             ideas=agent_output.ideas,
             post_types=agent_output.post_types,
-            existing_design_prompts=existing_design_prompts or [],
-            human_feedback=human_feedback or "No human feedback was provided. Create the first draft.",
         )
         config: RunnableConfig = {
             "configurable": {

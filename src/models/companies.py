@@ -204,6 +204,38 @@ class DesignImageGenerationModel(Base):
     )
 
 
+class FacebookPostScheduleModel(Base):
+    __tablename__ = "facebook_post_schedules"
+    __table_args__ = (
+        Index("ix_facebook_post_schedules_owner_id", "owner_id"),
+        Index("ix_facebook_post_schedules_generation_id", "generation_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    owner_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), nullable=False
+    )
+    ideas_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False
+    )
+    generation_id: Mapped[UUID] = mapped_column(
+        ForeignKey("design_image_generations.id", ondelete="CASCADE"), nullable=False
+    )
+    caption: Mapped[str] = mapped_column(String(63206), nullable=False)
+    image_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    scheduled_for: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    facebook_post_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="preview")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class UserModel(Base):
     __tablename__ = "users"
 

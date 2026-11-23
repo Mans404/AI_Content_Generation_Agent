@@ -1,322 +1,286 @@
-# AI Content Generation Workflow
+# AI Content Generation Agent
 
-FastAPI service for creating an authenticated Doctor profile and generating a
-monthly social-media content plan. The service generates content ideas, design
-prompts, captions, and images through OpenRouter, then stores profile and
-generated-content data in PostgreSQL and Supabase Storage. Generated images go
-through a human review step before they are stored permanently.
+A FastAPI backend for creating healthcare social media content from a doctor's profile. It connects structured text generation, image generation, PostgreSQL persistence, and an explicit image review step.
 
-## Features
+Given a profile and monthly topics, the API generates post ideas, captions, design prompts, and standalone images. A user can regenerate an image with feedback before approving it.
 
-- JWT registration, login, and logout with per-user ownership checks.
-- Create or update one Doctor profile per authenticated user.
-- JPG/JPEG profile-picture validation, size limits, and Supabase Storage upload.
-- Monthly Doctor offers and confusing matters as inputs to the planning agent.
-- Structured content ideas and post types based on the requested posts per week.
-- Design prompts and captions generated from the latest ideas batch.
-- Batch image generation: all missing designs are generated in parallel (bounded
-  concurrency), and a single failure never discards the successful images.
-- Human-in-the-loop review: list the current state of every design, approve
-  (store) designs, or regenerate individual designs with optional feedback.
-- Retry-safe generation: calling the batch endpoint again only generates the
-  missing designs and never re-bills images that already exist.
-- Async SQLAlchemy sessions with Alembic migrations.
+> **Status: active development.** This repository contains a backend, not a complete publishing platform. The workflow below is documented from the implementation at commit `e339cf2`. Setup and external-service calls have not been verified end to end. Generated health content requires human review before publication.
+
+## Contents
+
+- [Implemented features](#implemented-features)
+- [Architecture](#architecture)
+- [Tech stack](#tech-stack)
+- [Local setup](#local-setup)
+- [API workflow](#api-workflow)
+- [Endpoint reference](#endpoint-reference)
+- [Data and storage](#data-and-storage)
+- [Project structure](#project-structure)
+- [Current limitations and next steps](#current-limitations-and-next-steps)
+
+## Implemented features
+
+- **Account authentication:** registration, password login, 30-minute JWT access tokens, and token revocation on logout. Password hashing uses `pwdlib` with Argon2 support.
+- **Doctor profiles:** one profile per account, with specialization, language (`AR` or `EN`), audiences, procedures, strengths, posting frequency, and a JPEG profile picture.
+- **Monthly inputs:** offers and topics patients find confusing, saved for the current UTC calendar month.
+- **Content planning:** structured lists of post ideas and post types, validated against a four-week plan of `posts_per_week × 4` items.
+- **Caption generation:** one caption per idea, preserving the idea order.
+- **Design prompt generation:** one prompt per idea for a single static image, rather than a carousel or video.
+- **Image generation:** bounded parallel generation through OpenRouter, with persisted results and retries for missing indexes.
+- **Image review:** regenerate an unapproved image with optional text feedback, then approve it through a separate endpoint.
+- **Persistence:** SQLAlchemy models and Alembic migrations for accounts, profiles, monthly inputs, content batches, and image records. Image files use Supabase Storage.
+
+The prompts request educational, non-diagnostic content and avoid invented credentials, outcomes, and patient stories. These are prompt instructions, not a medical fact-checking system or a guarantee about model output.
 
 ## Architecture
 
 ```text
-Client
-  |
-  v
-FastAPI
-  |-- /auth/* -> JWT authentication and token revocation
-  |-- /api/v1/companies/ -> Doctor profile and monthly inputs
-  |-- /api/v1/companies/start_planning -> ideas and post types
-  |-- /api/v1/companies/design-prompts -> image prompts
-  |-- /api/v1/companies/captions -> captions
-  |-- /api/v1/companies/design-images/* -> image generation, review, approval
-  |
-  |-- PostgreSQL (profiles, users, monthly inputs, ideas, images)
-  |-- Supabase Storage (Doctor pictures and generated images)
-  `-- OpenRouter (text and image models)
+API client / Swagger UI
+        |
+        v
+FastAPI + JWT authentication
+        |
+        +--> Doctor profile + current-month inputs
+        |              |
+        |              v
+        |        Idea planning agent
+        |              |
+        |              +--> Caption agent --> Captions
+        |              |
+        |              +--> Design prompt agent
+        |                            |
+        |                            v
+        |                    Image generation service
+        |                            |
+        |                    Review / regenerate
+        |                            |
+        |                          Approve
+        |
+        +--> PostgreSQL: accounts, inputs, generated content, image metadata
+        +--> Supabase Storage: profile pictures and generated images
 ```
 
-### Main components
+Each stage is triggered by a separate API request. This is not a single autonomous background job. Caption and design prompt generation both depend on the latest saved idea batch, but do not depend on each other.
 
-| Path | Responsibility |
+### Model integration
+
+| Stage | Current implementation |
 | --- | --- |
-| [`src/main.py`](src/main.py) | Creates the FastAPI app, mounts legacy uploads, and registers routers. |
-| [`src/routes/`](src/routes/) | Defines authentication, profile, content, and image routes. |
-| [`src/controllers/`](src/controllers/) | Coordinates validation, persistence, agent calls, and storage operations. |
-| [`src/models/companies.py`](src/models/companies.py) | Defines users, Doctor profiles, monthly ideas, content batches, and image records. |
-| [`src/schemas/companies.py`](src/schemas/companies.py) | Defines API request and response models. |
-| [`src/agents/`](src/agents/) | Implements the planning, design-prompt, caption, and design-image agents. |
-| [`src/prompts/`](src/prompts/) | Stores prompt templates separately from Python code. |
-| [`src/database/companies.py`](src/database/companies.py) | Creates the async SQLAlchemy engine and session factory. |
-| [`src/models/alembic/`](src/models/alembic/) | Contains the Alembic environment and migrations. |
+| Ideas, captions, design prompts | LangChain `create_agent`, structured Pydantic responses, and `gpt-4o-mini` through OpenRouter |
+| Images | Direct HTTP requests to OpenRouter's chat completions endpoint; default model `google/gemini-2.5-flash-image` |
+| Occasion context | Upcoming Egyptian holidays from the `holidays` package |
 
-## Requirements
+The text model is currently hardcoded in the three text-agent modules. Image model, modalities, and batch concurrency are configurable with environment variables. Provider availability and billing depend on your own account.
 
-- Python 3.12 or 3.13
-- PostgreSQL
-- Supabase project with a public Storage bucket named `doctor-designs`
-- OpenRouter API key
-- Tavily API key for trend and occasion research
-- [`uv`](https://docs.astral.sh/uv/) recommended for dependency management
+## Tech stack
 
-The supported Python range and dependencies are defined in
-[`pyproject.toml`](pyproject.toml) and locked in [`uv.lock`](uv.lock).
+- Python 3.12 (`pyproject.toml` allows `>=3.12,<3.14`)
+- FastAPI, Uvicorn, Pydantic
+- LangChain and OpenRouter
+- SQLAlchemy async sessions, PostgreSQL, Psycopg, Alembic
+- Supabase Storage
+- PyJWT and `pwdlib`
+- `uv` for dependency management, with a committed `uv.lock`
 
-## Installation
+## Local setup
 
-```powershell
+Run the commands below from the repository root unless stated otherwise. They describe the current source layout; they are not a claim of a tested deployment.
+
+### 1. Prerequisites
+
+You need:
+
+- Python 3.12 and `uv`
+- A reachable PostgreSQL database and permission to apply schema migrations
+- An OpenRouter API key with access to the configured text and image models
+- A Supabase project with a Storage bucket named **`doctor-designs`**
+
+The current storage service returns **public object URLs**, including URLs for images awaiting approval. Configure the bucket for public reads if using this implementation unchanged. Do not upload patient data or other private material. A `pending/` path is a workflow state, not access control. Keep the Supabase service-role key server-side only.
+
+### 2. Clone and install dependencies
+
+```bash
 git clone https://github.com/Mans404/AI_Content_Generation_Agent.git
 cd AI_Content_Generation_Agent
-uv sync
+uv sync --locked --no-install-project
 ```
 
-If `uv` is not available, use a Python 3.12/3.13 virtual environment and
-install the project dependencies with your preferred package manager.
+The application runs directly from the repository's `src` package. `--no-install-project` installs the locked dependencies without requiring the repository itself to be installed as a distribution.
 
-## Configuration
+### 3. Configure environment variables
 
-Copy [`.env.example`](.env.example) to `.env`, replace every placeholder with
-your own value, and never commit credentials:
+Create a new `.env` file in the repository root. Use your own credentials, not values from a sample file:
 
-```powershell
-Copy-Item .env.example .env
+```dotenv
+OPENROUTER_API_KEY=replace-with-your-openrouter-key
+JWT_SECRET_KEY=replace-with-a-random-secret-at-least-32-characters-long
+JWT_ISSUER=content-generation-api
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=replace-with-your-server-side-service-role-key
+
+# Optional image-generation settings; these are the implementation defaults.
+DESIGN_IMAGE_MODEL=google/gemini-2.5-flash-image
+DESIGN_IMAGE_MODALITIES=image,text
+DESIGN_IMAGE_CONCURRENCY=3
 ```
 
-The application reads these environment variables:
+| Variable | Purpose |
+| --- | --- |
+| `OPENROUTER_API_KEY` | Required for text and image generation |
+| `JWT_SECRET_KEY` | Required at application import; at least 32 characters |
+| `JWT_ISSUER` | Optional token issuer; default `content-generation-api` |
+| `SUPABASE_URL` | Required when accessing Supabase Storage |
+| `SUPABASE_SERVICE_ROLE_KEY` | Required server-side Storage credential |
+| `DESIGN_IMAGE_MODEL` | Optional image-model override |
+| `DESIGN_IMAGE_MODALITIES` | Optional comma-separated modalities supported by the selected image model |
+| `DESIGN_IMAGE_CONCURRENCY` | Optional integer limit for batch image calls; default `3`, clamped to at least `1` |
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `JWT_SECRET_KEY` | Yes | JWT signing key; must contain at least 32 characters. |
-| `JWT_ISSUER` | No | JWT issuer; defaults to `content-generation-api`. |
-| `OPENROUTER_API_KEY` | Yes for AI | OpenRouter access for text and image generation. |
-| `TAVILY_API_KEY` | Yes for planning | Trend and occasion research. |
-| `SUPABASE_URL` | Yes for uploads | Supabase project URL. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes for uploads | Server-side Supabase Storage key. |
-| `DESIGN_IMAGE_MODEL` | No | Image model; defaults to `google/gemini-2.5-flash-image`. |
-| `DESIGN_IMAGE_MODALITIES` | No | Image response modalities; defaults to `image,text`. Use `image` for image-only models (FLUX, Recraft, ...). |
-| `DESIGN_IMAGE_CONCURRENCY` | No | Maximum concurrent image requests; defaults to `3`. Tune to your OpenRouter rate limits. |
+`MODEL_NAME` and `TAVILY_API_KEY` are not read by the current application source. Setting `MODEL_NAME` does not change the text agents.
 
-The database URL is currently read from
-[`src/models/alembic.ini`](src/models/alembic.ini):
+Never commit `.env` or credentials. The JWT placeholder above must be replaced with a real random secret, not used as-is.
+
+### 4. Configure the database
+
+```bash
+cp src/models/alembic.ini.example src/models/alembic.ini
+```
+
+Edit the `[alembic]` section in `src/models/alembic.ini` and set your database connection string:
 
 ```ini
-sqlalchemy.url = postgresql://USER:PASSWORD@HOST:5432/DATABASE
+[alembic]
+# Keep the other settings from the copied template.
+sqlalchemy.url = postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE
 ```
 
-The application converts a `postgresql://` URL to the async
-`postgresql+psycopg://` dialect automatically. The Supabase service-role key
-must remain server-side and must not be exposed to clients.
+**Important:** both the runtime database module and migrations read this file. A `DATABASE_URL` environment variable alone does not configure the application, despite the wording of the current error message. Keep the local `alembic.ini` private; it is excluded by `src/models/.gitignore`.
 
-## Database setup
+Use URL-encoded credentials where required by your database connection string. Preserve the template's migration and logging settings.
 
-From the repository root, apply all migrations:
+### 5. Apply migrations
 
-```powershell
-uv run alembic -c src/models/alembic.ini upgrade head
+```bash
+uv run --no-sync alembic -c src/models/alembic.ini upgrade head
 ```
 
-Check the current migration:
+Migrations create the schema; the application does not call `create_all()` on startup. The Supabase Storage bucket must be provisioned separately.
 
-```powershell
-uv run alembic -c src/models/alembic.ini current
+### 6. Start the API
+
+```bash
+mkdir -p uploads
+uv run --no-sync uvicorn src.main:app --reload
 ```
 
-## Running the API
+For the default local Uvicorn address:
 
-```powershell
-uv run uvicorn src.main:app --reload
-```
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- ReDoc: `http://127.0.0.1:8000/redoc`
+- OpenAPI schema: `http://127.0.0.1:8000/openapi.json`
 
-Interactive documentation:
-
-- <http://127.0.0.1:8000/docs>
-- <http://127.0.0.1:8000/redoc>
-
-## Authentication
-
-Register with JSON:
-
-```powershell
-$token = (Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/auth/register" `
-  -ContentType "application/json" `
-  -Body '{"username":"example","password":"use-a-strong-password"}').access_token
-```
-
-Login uses OAuth2 form data:
-
-```powershell
-$token = (Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/auth/login" `
-  -ContentType "application/x-www-form-urlencoded" `
-  -Body "username=example&password=use-a-strong-password").access_token
-```
-
-Send the token as `Authorization: Bearer <token>` to protected endpoints.
-`POST /auth/logout` revokes the current access token.
+`--reload` is for local development. The `uploads` directory supports the existing static mount; active profile and generated-image storage uses Supabase.
 
 ## API workflow
 
-All `/api/v1/companies/*` endpoints require a bearer token.
+Use Swagger UI for an interactive walkthrough. Generation endpoints can incur charges on your configured provider account.
 
-### 1. Create or update a Doctor profile
+### 1. Register or log in
 
-```http
-POST /api/v1/companies/
-Content-Type: multipart/form-data
-```
-
-The first request creates the profile and returns `201 Created`; subsequent
-requests update the same user's profile and return `200 OK`. `yourPicture` is
-required on creation and optional on update.
-
-| Field | Type | Required | Default / constraints |
-| --- | --- | --- | --- |
-| `doctor_name` | string | Yes | 1-200 characters |
-| `doctor_specialization` | enum | No | `other`; see values below |
-| `yourPicture` | file | Create only | JPG/JPEG, maximum 5 MB |
-| `language` | enum | No | `EN` or `AR`; defaults to `EN` |
-| `audiences` | repeated string | No | Maximum 20 items |
-| `types_of_medical_procedures` | repeated string | No | Maximum 20 items |
-| `strengths` | repeated string | No | Maximum 20 items |
-| `posts_per_week` | integer | No | 1-21; defaults to `3` |
-
-Supported `doctor_specialization` values are:
-`internal_medicine`, `dentistry`, `dermatology`, `cardiology`, `neurology`,
-`pediatrics`, `orthopedics`, `ophthalmology`, `obstetrics_and_gynecology`,
-`urology`, `general_surgery`, `psychiatry`, `ent`, `physiotherapy`, and `other`.
-
-Example:
-
-```powershell
-curl.exe -X POST "http://127.0.0.1:8000/api/v1/companies/" `
-  -H "Authorization: Bearer $token" `
-  -F "doctor_name=Dr. Example" `
-  -F "doctor_specialization=dermatology" `
-  -F "yourPicture=@C:\path\to\reference.jpg" `
-  -F "language=EN" `
-  -F "audiences=Adults" `
-  -F "audiences=Local patients" `
-  -F "posts_per_week=3"
-```
-
-List fields must be sent as repeated form fields. Each item must be a
-non-empty string, and surrounding whitespace is removed.
-
-### 2. Save monthly planning inputs
-
-```http
-POST /api/v1/companies/monthly-ideas
-Content-Type: application/json
-```
+`POST /auth/register` accepts JSON:
 
 ```json
 {
-  "doctor_offers": ["Free consultation this month"],
+  "username": "demo_doctor",
+  "password": "replace-with-a-unique-demo-password"
+}
+```
+
+Username length is 3-255 characters; password length is 12-128 characters. Registration returns `access_token` and `token_type`. Existing users can call `POST /auth/login` with form-encoded `username` and `password` fields.
+
+For protected requests, send:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+In Swagger UI, use **Authorize** to log in. Logout revokes the current token; it does not log out every session for that account.
+
+### 2. Create the doctor profile
+
+`POST /api/v1/companies/` accepts `multipart/form-data`. The route retains the legacy `companies` name, but represents the authenticated user's doctor profile.
+
+| Field | Type and behavior |
+| --- | --- |
+| `doctor_name` | Required string, 1-200 characters after trimming |
+| `doctor_specialization` | Enum value such as `dentistry`, `dermatology`, or `other`; default `other` |
+| `yourPicture` | JPEG file, required for initial creation; optional on update; maximum 5 MiB |
+| `language` | `AR` or `EN`; default `EN` |
+| `audiences` | Repeated form field, up to 20 strings |
+| `types_of_medical_procedures` | Repeated form field, up to 20 strings |
+| `strengths` | Repeated form field, up to 20 strings |
+| `posts_per_week` | Integer from 1 to 21; default `3` |
+
+Profile list items must be 1-500 characters after trimming. The picture validator checks filename extension, declared content type, size, and JPEG boundary signatures. See `src/models/enums.py` or the API schema for all specialization values.
+
+The same endpoint creates or updates the profile. Updates use the supplied values and defaults, so send the complete intended profile rather than treating this as a partial `PATCH`. An omitted picture keeps the existing picture.
+
+The current image-generation request sends a design prompt only. It does not send the uploaded profile picture to the image model.
+
+### 3. Save inputs for the current month
+
+`POST /api/v1/companies/monthly-ideas` accepts JSON:
+
+```json
+{
+  "doctor_offers": [],
   "advice_and_matters_that_most_people_find_confusing": [
-    "When should a patient see a specialist?"
+    "How often should adults schedule a routine dental check-up?",
+    "What is the difference between plaque and tartar?"
   ]
 }
 ```
 
-Each list accepts at most 10 items. A Doctor profile must exist first.
+Each list allows up to 10 items. A profile must already exist. The endpoint creates or replaces that profile's input lists for the current UTC month; there is no request field for choosing another month.
 
-### 3. Generate content ideas
+### 4. Generate the content plan
+
+Call `POST /api/v1/companies/start_planning` with no body.
+
+The response includes the monthly inputs and `agent_output`, containing aligned `ideas` and `post_types` lists. The validated plan contains `posts_per_week × 4` items. This is a four-week content plan, not an exact calendar schedule.
+
+Each call saves a new ideas batch. The caption, design-prompt, and batch-image endpoints operate on the latest batch for the current profile.
+
+### 5. Generate captions and design prompts
+
+Call either or both, with no body:
 
 ```http
-POST /api/v1/companies/start_planning
-```
-
-The endpoint has no request body. It loads the authenticated Doctor and the
-current month's inputs, researches trends and upcoming Egyptian occasions, and
-stores a new ideas batch containing `ideas` and matching `post_types`. The
-number of returned items is `posts_per_week * 4`.
-
-### 4. Generate design prompts and captions
-
-```http
-POST /api/v1/companies/design-prompts
 POST /api/v1/companies/captions
+POST /api/v1/companies/design-prompts
 ```
 
-Both endpoints have no request body and operate on the latest ideas batch.
-`design_prompts[i]` and `captions[i]` correspond to the idea and post type at
-the same index. Design prompts must be generated before requesting design
-images.
+The responses contain `captions` or `design_prompts`, respectively, with one item per idea in the same order. Results are saved to the ideas batch.
 
-### 5. Generate, review, and store design images
+Generate design prompts before images. Avoid generating a new plan or replacing prompts halfway through image review: downstream work is tied to the saved batch and prompt indexes. Replacing prompts deletes approved-image database records for that batch, but does not reset all generation records or remove their storage objects.
 
-Image generation follows a human-in-the-loop flow:
+### 6. Generate images
 
-```text
-GET  /design-images                      <- current state + missing_indexes
-  |
-  v  (if missing_indexes is not empty)
-POST /design-images/generate-all         <- generates only the missing designs
-  |
-  v
-User reviews all designs
-  |-- approve -> POST /design-images/{generation_id}/store       (stored = true)
-  `-- reject  -> POST /design-images/{generation_id}/regenerate  (+ optional feedback)
-                    `-> back to review
-  |
-  v
-Every item has stored = true -> continue to the next step
-```
+Call `POST /api/v1/companies/design-images/generate-all` with no body.
 
-#### List the current state
+The response has a `generations` list. Each item includes:
 
-```http
-GET /api/v1/companies/design-images
-```
+- `generation_id`: identifier used for regeneration and approval
+- `image_url`: URL to preview the image
+- `prompt_index`: zero-based index into the design prompts
+- `remaining_prompts`: number of prompt positions after this index, **not** a count of outstanding jobs
 
-Use it when the page loads or refreshes. It returns every generated design with
-its review state and the indexes that have not been generated yet.
+The implementation attempts only missing indexes and returns existing results too. A batch can return partial success; compare returned indexes with the design prompt list and retry to request missing images. If no results exist after an attempt, the controller returns `502`.
 
-```json
-{
-  "total": 12,
-  "items": [
-    {
-      "generation_id": "6f1c...",
-      "image_url": "https://.../pending/6f1c....png",
-      "prompt_index": 0,
-      "prompt": "A clean minimal poster about ...",
-      "stored": false
-    }
-  ],
-  "missing_indexes": [3, 7]
-}
-```
+Keep the returned generation IDs. There is no separate list/status retrieval endpoint in the current router.
 
-`stored: false` means the design is waiting for review; `stored: true` means it
-was approved.
+### 7. Review, regenerate, and approve
 
-#### Generate all missing images
-
-```http
-POST /api/v1/companies/design-images/generate-all
-```
-
-Generates every design that does not exist yet, in parallel and bounded by
-`DESIGN_IMAGE_CONCURRENCY`. The response contains a `generation_id`, a temporary
-public `image_url`, `prompt_index`, and `remaining_prompts` for each available
-image.
-
-- **Retry-safe:** existing prompt indexes are returned as they are; the paid
-  image model is only called for missing ones.
-- **Partial failures:** if some images fail, the successful ones are saved and
-  returned. Compare `len(generations)` with the number of prompts (or call
-  `GET /design-images` and read `missing_indexes`) and call the endpoint again to
-  complete the rest.
-- Returns `502` only if no image could be generated at all.
-
-#### Regenerate one image
+To replace an unapproved image:
 
 ```http
 POST /api/v1/companies/design-images/{generation_id}/regenerate
@@ -325,65 +289,95 @@ Content-Type: application/json
 
 ```json
 {
-  "feedback": "Use a lighter background and fewer decorative elements."
+  "feedback": "Use fewer icons, more whitespace, and a clearer headline area."
 }
 ```
 
-The body is optional. The feedback (max 1000 characters) is appended to the
-original prompt for this generation only; the prompt stored in the ideas batch is
-not modified. The previous image file is deleted after the new one is saved.
+Feedback is optional and limited to 1,000 characters. Regeneration makes a new image request using the original design prompt plus the latest feedback; it is not an image-to-image editing call or a persistent revision conversation. Approved images cannot be regenerated through this endpoint.
 
-Returns `409` if the design was already approved.
-
-#### Approve (store) one image
+To approve an image:
 
 ```http
 POST /api/v1/companies/design-images/{generation_id}/store
 ```
 
-Moves the image from `pending/` to its final storage path and creates the
-permanent design record. The call is idempotent: approving an already-approved
-design returns the stored image again. If the database write fails after the
-file was moved, the file is moved back.
+Approval moves the object out of `pending/` and saves an approved-image record. It does not publish anything to a social media account.
 
-Approved images cannot be regenerated. Storage operations use the public
-Supabase `doctor-designs` bucket for both profile and generated images.
+## Endpoint reference
 
-#### Status codes
+All business routes require bearer authentication. No route below is implied to be a background task.
 
-| Code | Meaning |
-| --- | --- |
-| `404` | No company profile, no design prompts yet, or the generation was not found. |
-| `409` | Trying to regenerate an image that is already approved. |
-| `502` | The image model failed for every requested design. |
+| Method | Path | Request | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/auth/register` | JSON | Create an account and return a token |
+| `POST` | `/auth/login` | Form | Authenticate and return a token |
+| `POST` | `/auth/logout` | No body; bearer token | Revoke the current token |
+| `POST` | `/api/v1/companies/` | Multipart form | Create or update the doctor profile |
+| `POST` | `/api/v1/companies/monthly-ideas` | JSON | Save current-month inputs |
+| `POST` | `/api/v1/companies/start_planning` | No body | Generate and save ideas/post types |
+| `POST` | `/api/v1/companies/captions` | No body | Generate and save captions |
+| `POST` | `/api/v1/companies/design-prompts` | No body | Generate and save design prompts |
+| `POST` | `/api/v1/companies/design-images/generate-all` | No body | Generate missing images in the latest batch |
+| `POST` | `/api/v1/companies/design-images/{generation_id}/regenerate` | Optional JSON | Regenerate an unapproved image |
+| `POST` | `/api/v1/companies/design-images/{generation_id}/store` | No body | Approve an image |
 
-## Development notes
+Use the generated OpenAPI schema for response details and validation rules.
 
-- The API exposes the existing local `uploads` directory at `/uploads` for
-  legacy files; new uploads use Supabase Storage.
-- The database uses async SQLAlchemy with `psycopg`.
-- The planning, design-prompt, and caption agents use structured Pydantic output.
-- No database lock is held while images are being generated; sessions are only
-  opened for short reads and writes.
-- All generated images of one request are saved in a single commit.
-- `design_image_generations` and `design_images` both have a unique constraint on
-  `(ideas_id, prompt_index)`. This is the real protection against duplicate
-  images when several workers run; the in-process `asyncio.Lock` only covers a
-  single process.
-- There are currently no automated tests or CI workflows; use the Swagger UI or
-  `curl.exe` for manual API verification.
+## Data and storage
 
-## Known limitations / roadmap
+The main database entities are:
 
-- `generate-all` runs inside the request. For a large number of designs it may hit
-  the gateway timeout; moving it to a background task that returns `202` plus a
-  progress endpoint is the planned improvement.
-- Images that were generated but never approved remain in the `pending/` folder
-  of the bucket. A periodic cleanup job or a storage lifecycle rule is
-  recommended.
-- Regeneration currently accepts free-text feedback only; editing the design
-  prompt itself is not supported yet.
+- `users` and `revoked_tokens`: credentials and revoked access-token identifiers
+- `companies`: doctor profiles, retaining the earlier table name
+- `monthly_ideas`: one input record per profile and UTC month
+- `ideas`: generated idea batches, including post types, captions, and design prompts
+- `design_image_generations`: generated candidates with a `stored` approval flag
+- `design_images`: approved-image records
 
-## License
+The two image tables enforce uniqueness on `(ideas_id, prompt_index)`. Image controllers also use in-process locks and compensating cleanup for some storage/database failures. These mechanisms do not establish exactly-once execution across workers or eliminate duplicate paid provider calls.
 
-No license has been specified in the repository yet.
+Profile pictures and generated images share the `doctor-designs` bucket. API authentication does not make the returned public Storage URLs private.
+
+## Project structure
+
+```text
+src/
+├── main.py                    # FastAPI entry point and router assembly
+├── agents/                    # Ideas, captions, design prompts, image generation
+├── routes/                    # HTTP endpoints
+├── controllers/               # Profile, content, and image workflow logic
+├── database/                  # Async SQLAlchemy engine/session configuration
+├── jwt/                       # Authentication and token revocation
+├── models/
+│   ├── companies.py           # ORM entities
+│   ├── enums.py               # Language and specialization values
+│   ├── alembic/               # Migration environment and version history
+│   └── alembic.ini.example     # Local database configuration template
+├── schemas/                   # Request, response, and structured AI output models
+├── prompts/                   # Text prompt templates
+├── prompt_loader.py           # Template loading and formatting
+└── services/                  # Supabase Storage and Egyptian holiday context
+tests/
+└── test_agent.ipynb            # Exploratory notebook, not an automated test suite
+pyproject.toml
+uv.lock
+```
+
+## Current limitations and next steps
+
+This is a work-in-progress backend. The repository does not currently include a frontend, social media publishing integration, Docker configuration, CI workflow, or an automated test suite.
+
+Priorities for further development:
+
+- [ ] Add automated tests for authentication, ownership boundaries, validation, migrations, and the complete content-to-approval flow.
+- [ ] Mock provider and storage failures to test partial batches, retries, concurrent requests, and cleanup.
+- [ ] Add measurable evaluations for medical-content safety, relevance, caption quality, and image/prompt alignment.
+- [ ] Centralize text-model configuration and remove unused dependencies and legacy naming.
+- [ ] Add retrieval/status endpoints for saved content and image review, plus a defined policy for replacing batches and prompts.
+- [ ] Add bounded lock lifecycle, distributed coordination where needed, request limits, and provider retry/timeout policies.
+- [ ] Review storage privacy, orphan cleanup, and expired-token cleanup before deployment.
+- [ ] Add deployment configuration, health checks, and operational monitoring.
+
+A `thread_id` is passed to the text agents, but no checkpointer is configured, so persistent conversational memory is not implemented. The idea validator currently truncates excess output to the requested count and rejects shorter output. Neither behavior replaces output-quality evaluation.
+
+Use this project as a development backend and a demonstration of an integrated AI content workflow, not as an unattended medical publishing system.

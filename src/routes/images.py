@@ -7,15 +7,35 @@ from src.controllers.images import (
     regenerate_design_image,
     store_generated_design_image,
 )
+from src.controllers.facebook import schedule_facebook_post
 from src.jwt.auth import CurrentUser
 from src.schemas.companies import (
     DesignImageBatchGenerationResponse,
     DesignImageGenerationResponse,
     DesignImageRegenerateRequest,
     DesignImageResponse,
+    FacebookPostScheduleRequest,
+    FacebookPostScheduleResponse,
 )
 
 router = APIRouter()
+
+
+@router.post(
+    "/facebook-posts/schedule",
+    response_model=FacebookPostScheduleResponse,
+)
+async def schedule_facebook_post_route(
+    payload: FacebookPostScheduleRequest,
+    current_user: CurrentUser,
+) -> FacebookPostScheduleResponse:
+    schedule_for = payload.scheduled_for or payload.schedule_for
+    return await schedule_facebook_post(
+        owner_id=current_user.id,
+        generation_id=payload.generation_id,
+        scheduled_for=schedule_for,
+        live=payload.live,
+    )
 
 
 @router.post(

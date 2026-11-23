@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -76,3 +77,21 @@ class DesignImageListResponse(BaseModel):
     total: int
     items: list[DesignImageStatusResponse]
     missing_indexes: list[int]  # designs not generated yet or that failed
+
+
+class FacebookPostScheduleRequest(BaseModel):
+    generation_id: UUID
+    schedule_for: datetime | Literal["now"] = "now"
+    scheduled_for: datetime | None = None
+    live: bool = False
+
+
+class FacebookPostScheduleResponse(BaseModel):
+    schedule_id: UUID
+    generation_id: UUID
+    image_url: str
+    caption: str
+    scheduled_for: datetime
+    live: bool
+    status: str
+    facebook_post_id: str | None = None

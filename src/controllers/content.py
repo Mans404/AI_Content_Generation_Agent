@@ -9,13 +9,22 @@ from src.agents.design_prompt_agent import design_prompt_agent
 from src.agents.doctor_agent import doctor_agent
 from src.controllers.common import build_doctor_context
 from src.database.companies import async_session_factory
+from src.controllers.images import (
+    generate_all_design_images,
+    store_generated_design_image,
+)
 from src.models.companies import (
     DesignImageModel,
     DoctorModel,
     IdeasModel,
     MonthlyIdeasModel,
 )
-from src.schemas.companies import StartPlanningResponse
+from src.schemas.companies import (
+    CaptionsResponse,
+    DesignPromptsResponse,
+    PipelineResponse,
+    StartPlanningResponse,
+)
 from src.schemas.doctor_agent import AgentOutput, CaptionOutput, DesignPromptOutput
 async def _save_agent_output(
     company_id: UUID,
@@ -184,3 +193,32 @@ async def generate_captions(owner_id: UUID) -> CaptionOutput:
         await session.commit()
 
     return caption_output
+
+
+async def run_content_pipeline(owner_id: UUID) -> PipelineResponse:
+    planning = await start_planning(owner_id)
+
+    prompt_output = await start_design_prompt_generation(owner_id)
+    design_prompts = DesignPromptsResponse(
+        design_prompts=prompt_output.design_prompts
+    )
+
+    caption_output = await generate_captions(owner_id)
+    captions = CaptionsResponse(captions=caption_output.captions)
+
+    generations = await generate_all_design_images(owner_id)
+    stored_images = [
+        await store_generated_design_image(
+            owner_id=owner_id,
+            generation_id=generation.generation_id,
+        )
+        for generation in generations.generations
+    ]
+
+    return PipelineResponse(
+        planning=planning,
+        design_prompts=design_prompts,
+        captions=captions,
+        generations=generations,
+        stored_images=stored_images,
+    )

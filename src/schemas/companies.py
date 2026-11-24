@@ -95,3 +95,11 @@ class FacebookPostScheduleResponse(BaseModel):
     live: bool
     status: str
     facebook_post_id: str | None = None
+
+
+class PipelineResponse(BaseModel):
+    planning: StartPlanningResponse
+    design_prompts: DesignPromptsResponse
+    captions: CaptionsResponse
+    generations: DesignImageBatchGenerationResponse
+    stored_images: list[DesignImageResponse]

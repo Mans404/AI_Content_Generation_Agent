@@ -44,6 +44,8 @@ STUCK_AFTER = timedelta(minutes=10)
 R, F = TelegramPostReviewModel, FacebookPostScheduleModel
 D = DoctorModel
 G = DesignImageGenerationModel
+
+
 class ClaimedReview(NamedTuple):
     review_id: UUID
     attempt: int
@@ -87,7 +89,7 @@ async def claim_due_reviews(owner_id: UUID, limit: int = 10) -> list[ClaimedRevi
             .values(status=NEEDS_ATTENTION,
                     last_error="stuck in sending; may already be on Telegram"))
         rows = (await session.execute(
-            select(R, G.file_path, F.caption)
+            select(R, G.file_path.label("image_path"), F.caption.label("caption"))
             .join(F, F.id == R.schedule_id)
             .join(G, G.id == R.generation_id)
             .where(R.status == PENDING, R.owner_id == owner_id,
@@ -95,12 +97,13 @@ async def claim_due_reviews(owner_id: UUID, limit: int = 10) -> list[ClaimedRevi
             .order_by(F.scheduled_for).limit(limit)
             .with_for_update(of=R, skip_locked=True))).all()
         claims = []
-        for review, image_path, caption in rows:
+        for row in rows:
+            review = row[0]
             review.status, review.claimed_at = SENDING, now
             review.attempts += 1
             claims.append(
                 ClaimedReview(review.id, review.attempts, review.owner_id,
-                              image_path, caption))
+                              row.image_path, row.caption))
         await session.commit()
         return claims
 
@@ -117,6 +120,7 @@ async def _transition(review_id: UUID, expect: str, to: str, *extra, **values) -
         # back from the database itself, so a committed row is never
         # reported lost, and no rowcount typing guesswork is needed
         return matched is not None
+
 
 async def still_claimed(review_id: UUID, attempt: int) -> bool:
     # preflight read right before sending: catches a claim already lost.
@@ -172,6 +176,7 @@ async def requeue_rejected(review_id: UUID, generation_id: UUID) -> bool:
                              generation_id=generation_id,
                              telegram_message_id=None, claimed_at=None)
 
+
 async def requeue_sending(review_id: UUID, attempt: int) -> bool:
     # sending -> pending after a send that never reached Telegram (retry);
     # False means the row moved on and this worker must stop touching it
@@ -184,6 +189,7 @@ async def mark_needs_attention(review_id: UUID, attempt: int, reason: str) -> bo
     # Bound to this claim so it can never overwrite approved/published rows.
     return await _transition(review_id, SENDING, NEEDS_ATTENTION,
                              R.attempts == attempt, last_error=reason[:1000])
+
 
 class ApprovedReview(NamedTuple):
     review_id: UUID
@@ -223,8 +229,14 @@ async def claim_approved_reviews(owner_id: UUID, limit: int = 10) -> list[Approv
             .values(status=NEEDS_ATTENTION,
                     last_error="stuck in publishing; the post may already be on Facebook"))
         rows = (await session.execute(
-            select(R, G.file_path, F.caption, F.company_id, G.company_id,
-                   F.owner_id, D.owner_id, F.generation_id)
+            select(R,
+                   G.file_path.label("image_path"),
+                   F.caption.label("caption"),
+                   F.company_id.label("sched_company"),
+                   G.company_id.label("gen_company"),
+                   F.owner_id.label("sched_owner"),
+                   D.owner_id.label("co_owner"),
+                   F.generation_id.label("sched_gen"))
             .join(F, F.id == R.schedule_id)
             .join(G, G.id == R.generation_id)
             .join(D, D.id == G.company_id)
@@ -232,15 +244,15 @@ async def claim_approved_reviews(owner_id: UUID, limit: int = 10) -> list[Approv
             .order_by(F.scheduled_for).limit(limit)
             .with_for_update(of=R, skip_locked=True))).all()
         claims = []
-        for review, image_path, caption, company_id, gen_company, \
-                sched_owner, co_owner, sched_gen in rows:
-            if (sched_owner != owner_id or co_owner != owner_id
-                    or review.generation_id != sched_gen
-                    or gen_company != company_id
+        for row in rows:
+            review = row[0]
+            if (row.sched_owner != owner_id or row.co_owner != owner_id
+                    or review.generation_id != row.sched_gen
+                    or row.gen_company != row.sched_company
                     or review.sent_image_path is None
                     or review.sent_caption is None
-                    or image_path != review.sent_image_path
-                    or caption != review.sent_caption):
+                    or row.image_path != review.sent_image_path
+                    or row.caption != review.sent_caption):
                 review.status = NEEDS_ATTENTION
                 review.claimed_at = None
                 review.last_error = (
@@ -249,10 +261,10 @@ async def claim_approved_reviews(owner_id: UUID, limit: int = 10) -> list[Approv
                 continue
             review.status, review.claimed_at = PUBLISHING, now
             review.attempts += 1
-            #######
             claims.append(ApprovedReview(
                 review.id, review.attempts, review.owner_id,
-                review.schedule_id, company_id, image_path, caption))
+                review.schedule_id, row.sched_company,
+                row.image_path, row.caption))
         await session.commit()
         return claims
 
@@ -285,14 +297,19 @@ async def mark_review_published(
     """
     async with async_session_factory() as session:
         row = (await session.execute(
-            select(R.schedule_id, R.generation_id,
-                   R.sent_image_path, R.sent_caption)
+            select(R.schedule_id.label("schedule_id"),
+                   R.generation_id.label("generation_id"),
+                   R.sent_image_path.label("sent_image"),
+                   R.sent_caption.label("sent_caption"))
             .where(R.id == review_id, R.status == PUBLISHING,
                    R.attempts == attempt)
             .with_for_update())).first()
         if row is None:
             return "stale"
-        schedule_id, generation_id, sent_image, sent_caption = row
+        schedule_id = row.schedule_id
+        generation_id = row.generation_id
+        sent_image = row.sent_image
+        sent_caption = row.sent_caption
         caption = await session.scalar(
             select(F.caption).where(F.id == schedule_id).with_for_update())
         image_path = await session.scalar(
@@ -322,7 +339,6 @@ async def mark_review_published(
             # unreachable while the row lock above is held; guard anyway
             await session.rollback()
             return "stale"
-        ######
         await session.execute(
             update(F)
             .where(F.id == schedule_id)
@@ -344,6 +360,7 @@ async def mark_publish_uncertain(review_id: UUID, attempt: int, reason: str) -> 
                              R.attempts == attempt,
                              claimed_at=None, last_error=reason[:1000])
 
+
 REGENERATING = "regenerating"
 I = IdeasModel
 DI = DesignImageModel
@@ -356,6 +373,7 @@ class RegenClaim(NamedTuple):
     generation_id: UUID
     prompt: str
     old_path: str
+
 
 async def claim_rejected_reviews(owner_id: UUID, limit: int = 5) -> list[RegenClaim]:
     """Claim one owner's rejected reviews (rejected -> regenerating).
@@ -380,9 +398,16 @@ async def claim_rejected_reviews(owner_id: UUID, limit: int = 5) -> list[RegenCl
             .values(status=NEEDS_ATTENTION,
                     last_error="stuck in regenerating; a new image may have been uploaded"))
         rows = (await session.execute(
-            select(R, G.file_path, G.stored, G.company_id, G.prompt_index,
-                   I.design_prompts, F.company_id, F.owner_id, D.owner_id,
-                   F.generation_id)
+            select(R,
+                   G.file_path.label("file_path"),
+                   G.stored.label("stored"),
+                   G.company_id.label("gen_company"),
+                   G.prompt_index.label("prompt_index"),
+                   I.design_prompts.label("prompts"),
+                   F.company_id.label("sched_company"),
+                   F.owner_id.label("sched_owner"),
+                   D.owner_id.label("co_owner"),
+                   F.generation_id.label("sched_gen"))
             .join(F, F.id == R.schedule_id)
             .join(G, G.id == R.generation_id)
             .join(I, I.id == G.ideas_id)
@@ -391,8 +416,10 @@ async def claim_rejected_reviews(owner_id: UUID, limit: int = 5) -> list[RegenCl
             .order_by(R.responded_at).limit(limit)
             .with_for_update(of=R, skip_locked=True))).all()
         claims = []
-        for review, file_path, stored, gen_company, prompt_index, prompts, \
-                sched_company, sched_owner, co_owner, sched_gen in rows:
+        for row in rows:
+            review = row[0]
+            prompts = row.prompts
+            prompt_index = row.prompt_index
             prompt = None
             if isinstance(prompts, list) and 0 <= prompt_index < len(prompts):
                 prompt = prompts[prompt_index]
@@ -401,10 +428,10 @@ async def claim_rejected_reviews(owner_id: UUID, limit: int = 5) -> list[RegenCl
                     R.generation_id == review.generation_id,
                     R.id != review.id,
                     R.status.notin_([PUBLISHED, FAILED])).limit(1))
-            if (sched_owner != owner_id or co_owner != owner_id
-                    or review.generation_id != sched_gen
-                    or gen_company != sched_company
-                    or not stored
+            if (row.sched_owner != owner_id or row.co_owner != owner_id
+                    or review.generation_id != row.sched_gen
+                    or row.gen_company != row.sched_company
+                    or not row.stored
                     or not isinstance(prompt, str) or not prompt.strip()
                     or other_open is not None):
                 review.status = NEEDS_ATTENTION
@@ -417,9 +444,10 @@ async def claim_rejected_reviews(owner_id: UUID, limit: int = 5) -> list[RegenCl
             review.attempts += 1
             claims.append(RegenClaim(
                 review.id, review.attempts, review.owner_id,
-                review.generation_id, prompt, file_path))
+                review.generation_id, prompt, row.file_path))
         await session.commit()
         return claims
+
 
 async def still_regenerating(review_id: UUID, attempt: int) -> bool:
     # preflight read before the paid generation call: narrows the
@@ -454,9 +482,12 @@ async def finish_regeneration(
         if gen_id is None:
             return "stale"
         row = (await session.execute(
-            select(G.file_path, G.stored, G.ideas_id, G.prompt_index)
+            select(G.file_path.label("file_path"),
+                   G.stored.label("stored"),
+                   G.ideas_id.label("ideas_id"),
+                   G.prompt_index.label("prompt_index"))
             .where(G.id == gen_id).with_for_update())).first()
-        if row is None or row[0] != old_path or not row[1]:
+        if row is None or row.file_path != old_path or not row.stored:
             await session.execute(
                 update(R)
                 .where(R.id == review_id, R.status == REGENERATING,
@@ -465,7 +496,7 @@ async def finish_regeneration(
                         last_error="image changed while regenerating; not swapped"))
             await session.commit()
             return "changed"
-        _, _, ideas_id, prompt_index = row
+        ideas_id, prompt_index = row.ideas_id, row.prompt_index
         await session.execute(
             update(G).where(G.id == gen_id).values(file_path=new_path))
         await session.execute(

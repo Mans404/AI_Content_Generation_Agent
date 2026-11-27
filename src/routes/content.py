@@ -2,7 +2,6 @@ from fastapi import APIRouter
 
 from src.controllers.content import (
     generate_captions,
-    run_content_pipeline,
     start_design_prompt_generation,
     start_planning,
 )
@@ -10,7 +9,6 @@ from src.jwt.auth import CurrentUser
 from src.schemas.companies import (
     CaptionsResponse,
     DesignPromptsResponse,
-    PipelineResponse,
     StartPlanningResponse,
 )
 
@@ -39,10 +37,3 @@ async def generate_captions_route(
 ) -> CaptionsResponse:
     result = await generate_captions(owner_id=current_user.id)
     return CaptionsResponse(captions=result.captions)
-
-
-@router.post("/pipeline", response_model=PipelineResponse)
-async def run_content_pipeline_route(
-    current_user: CurrentUser,
-) -> PipelineResponse:
-    return await run_content_pipeline(owner_id=current_user.id)

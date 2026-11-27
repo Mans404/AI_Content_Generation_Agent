@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "google/gemini-2.5-flash-image"
+DEFAULT_MODEL = "google/gemini-2.5-flash-image"   #google/gemini-2.5-flash-image
 DEFAULT_CONCURRENCY = 3
 
 

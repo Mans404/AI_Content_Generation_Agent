@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from src.agents.caption_llm import caption_llm
 from src.agents.design_prompt_agent import design_prompt_agent
@@ -14,6 +14,7 @@ from src.controllers.images import (
     store_generated_design_image,
 )
 from src.models.companies import (
+    DesignImageGenerationModel,
     DesignImageModel,
     DoctorModel,
     IdeasModel,
@@ -25,6 +26,13 @@ from src.schemas.companies import (
     PipelineResponse,
     StartPlanningResponse,
 )
+
+async def _count_generations(session, ideas_id: UUID) -> int:
+    return await session.scalar(
+        select(func.count())
+        .select_from(DesignImageGenerationModel)
+        .where(DesignImageGenerationModel.ideas_id == ideas_id)
+    )
 from src.schemas.doctor_agent import AgentOutput, CaptionOutput, DesignPromptOutput
 async def _save_agent_output(
     company_id: UUID,
@@ -120,6 +128,21 @@ async def start_design_prompt_generation(
                 detail="Generate content ideas before generating design prompts.",
             )
 
+        # Refuse BEFORE spending an LLM call: once design images exist for
+        # this batch, replacing its prompts would strand those images (they
+        # are keyed to the current prompts by index). No images yet means
+        # nothing can be stranded, so regeneration stays allowed then.
+        if await _count_generations(session, ideas.id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Design images already exist for this content batch, so "
+                    "its design prompts can no longer be replaced. Start a "
+                    "new plan to create a fresh batch with new prompts."
+                ),
+            )
+
+
     doctor_context = build_doctor_context(doctor)
     agent_output = AgentOutput.model_validate(
         {
@@ -137,6 +160,17 @@ async def start_design_prompt_generation(
         saved_ideas = await session.get(IdeasModel, ideas.id)
         if saved_ideas is None:
             raise RuntimeError(f"Ideas batch {ideas.id} could not be retrieved.")
+        # Re-check inside the saving transaction: images may have been
+        # generated while the LLM call above was running.
+        if await _count_generations(session, saved_ideas.id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Design images already exist for this content batch, so "
+                    "its design prompts can no longer be replaced. Start a "
+                    "new plan to create a fresh batch with new prompts."
+                ),
+            )
         await session.execute(
             delete(DesignImageModel).where(DesignImageModel.ideas_id == saved_ideas.id)
         )

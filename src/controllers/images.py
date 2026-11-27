@@ -185,15 +185,23 @@ async def _persist_new_generations(
 
 async def generate_all_design_images(
     owner_id: UUID,
+    limit: int | None = None,
 ) -> DesignImageBatchGenerationResponse:
     """Generate every missing design. Safe to call again: only missing / previously
-    failed indexes are generated, existing ones are returned as they are."""
+    failed indexes are generated, existing ones are returned as they are.
+    With limit=N only the first N prompts are generated (None keeps the old
+    behaviour: all of them)."""
     ctx = await _load_context(owner_id)
     total = len(ctx.prompts)
+    wanted = total
+    if limit is not None:
+        if limit < 1:
+            raise HTTPException(status_code=422, detail="limit must be at least 1.")
+        wanted = min(limit, total)
 
     async with _lock_for(ctx.ideas_id):
         generations = await _load_generations(ctx.ideas_id)
-        missing = [index for index in range(total) if index not in generations]
+        missing = [index for index in range(wanted) if index not in generations]
 
         if missing:
             results = await design_image_agent.generate_many(
